@@ -1,0 +1,101 @@
+review_id,filename,original_filename,split,object_count,classes,large_item_classes
+001,001_living_room_299.jpg,living_room_299.jpg,validation,13,bed; table; lamp; window; door; potted plant; photo frame,bed; table
+002,002_living_room_213.jpg,living_room_213.jpg,validation,10,bed; chair; table; lamp; wardrobe; potted plant; photo frame,bed; table; wardrobe
+003,003_living_room_282.jpg,living_room_282.jpg,validation,16,bed; chair; table; lamp; potted plant; photo frame,bed; table
+004,004_living_room_1p_439.jpg,living_room_1p (439).jpg,validation,14,bed; lamp; wardrobe; door; potted plant; photo frame,bed; wardrobe
+005,005_living_room_506.jpg,living_room_506.jpg,validation,12,bed; chair; table; window; door; potted plant,bed; table
+006,006_living_room_1p_464.jpg,living_room_1p (464).jpg,validation,10,bed; chair; table; lamp; potted plant; photo frame,bed; table
+007,007_living_room_376.jpg,living_room_376.jpg,validation,9,bed; sofa; lamp; wardrobe; window; photo frame,bed; sofa; wardrobe
+008,008_living_room_266.jpg,living_room_266.jpg,validation,13,bed; table; lamp; potted plant; photo frame,bed; table
+009,009_living_room_1p_272.jpg,living_room_1p (272).jpg,validation,11,bed; table; lamp; window; photo frame,bed; table
+010,010_living_room_1p_89.jpg,living_room_1p (89).jpg,validation,10,bed; chair; table; lamp; window,bed; table
+011,011_living_room_168.jpg,living_room_168.jpg,validation,8,bed; sofa; lamp; potted plant; photo frame,bed; sofa
+012,012_living_room_1p_85.jpg,living_room_1p (85).jpg,validation,8,bed; lamp; window; potted plant; photo frame,bed
+013,013_living_room_814.jpg,living_room_814.jpg,validation,11,sofa; chair; table; lamp; tv; wardrobe; window; door; potted plant; photo frame,sofa; table; tv; wardrobe
+014,014_living_room_1p_97.jpg,living_room_1p (97).jpg,validation,24,sofa; chair; table; lamp; tv; wardrobe; window; potted plant; photo frame,sofa; table; tv; wardrobe
+015,015_living_room_1p_52.jpg,living_room_1p (52).jpg,validation,23,sofa; table; lamp; tv; wardrobe; window; door; potted plant; photo frame,sofa; table; tv; wardrobe
+016,016_living_room_86.jpg,living_room_86.jpg,validation,19,sofa; chair; table; lamp; tv; wardrobe; window; door; photo frame,sofa; table; tv; wardrobe
+017,017_living_room_180.jpg,living_room_180.jpg,validation,31,sofa; chair; table; lamp; wardrobe; window; potted plant; photo frame,sofa; table; wardrobe
+018,018_living_room_384.jpg,living_room_384.jpg,validation,26,sofa; chair; table; lamp; tv; wardrobe; window; potted plant,sofa; table; tv; wardrobe
+019,019_living_room_1p_353.jpg,living_room_1p (353).jpg,validation,20,sofa; table; lamp; tv; wardrobe; window; potted plant; photo frame,sofa; table; tv; wardrobe
+020,020_living_room_1p_131.jpg,living_room_1p (131).jpg,validation,18,sofa; chair; table; lamp; wardrobe; window; potted plant; photo frame,sofa; table; wardrobe
+021,021_living_room_1024.jpg,living_room_1024.jpg,validation,18,sofa; table; lamp; wardrobe; window; door; potted plant; photo frame,sofa; table; wardrobe
+022,022_living_room_1p_339.jpg,living_room_1p (339).jpg,validation,16,sofa; chair; table; lamp; wardrobe; window; door; photo frame,sofa; table; wardrobe
+023,023_living_room_748.jpg,living_room_748.jpg,validation,16,sofa; chair; table; lamp; tv; wardrobe; window; potted plant,sofa; table; tv; wardrobe
+024,024_living_room_1p_306.jpg,living_room_1p (306).jpg,validation,15,sofa; table; lamp; tv; wardrobe; window; potted plant; photo frame,sofa; table; tv; wardrobe
+025,025_living_room_1p_412.jpg,living_room_1p (412).jpg,validation,14,sofa; chair; table; lamp; wardrobe; window; potted plant; photo frame,sofa; table; wardrobe
+026,026_living_room_34.jpg,living_room_34.jpg,validation,13,sofa; chair; table; lamp; wardrobe; door; potted plant; photo frame,sofa; table; wardrobe
+027,027_living_room_830.jpg,living_room_830.jpg,validation,10,sofa; chair; table; tv; wardrobe; window; potted plant; photo frame,sofa; table; tv; wardrobe
+028,028_living_room_1p_164.jpg,living_room_1p (164).jpg,validation,25,sofa; chair; table; wardrobe; window; potted plant; photo frame,sofa; table; wardrobe
+029,029_living_room_647.jpg,living_room_647.jpg,validation,25,sofa; chair; table; lamp; wardrobe; door; potted plant,sofa; table; wardrobe
+030,030_living_room_1p_597.jpg,living_room_1p (597).jpg,validation,22,sofa; lamp; tv; wardrobe; window; potted plant; photo frame,sofa; tv; wardrobe
+031,031_living_room_156.jpg,living_room_156.jpg,validation,13,sofa; chair; table; lamp; tv; window; potted plant; photo frame,sofa; table; tv
+032,032_living_room_1p_122.jpg,living_room_1p (122).jpg,validation,12,sofa; chair; table; lamp; tv; door; potted plant; photo frame,sofa; table; tv
+033,033_living_room_404.jpg,living_room_404.jpg,validation,21,chair; table; lamp; tv; window; potted plant; photo frame,table; tv
+034,034_living_room_708.jpg,living_room_708.jpg,validation,17,sofa; table; lamp; tv; window; potted plant; photo frame,sofa; table; tv
+035,035_living_room_1p_408.jpg,living_room_1p (408).jpg,validation,12,sofa; chair; table; tv; wardrobe; window; potted plant,sofa; table; tv; wardrobe
+036,036_living_room_1p_310.jpg,living_room_1p (310).jpg,validation,12,sofa; chair; table; lamp; tv; window; potted plant,sofa; table; tv
+037,037_living_room_818.jpg,living_room_818.jpg,validation,9,sofa; table; lamp; tv; wardrobe; window; potted plant,sofa; table; tv; wardrobe
+038,038_living_room_554.jpg,living_room_554.jpg,validation,8,sofa; chair; table; lamp; tv; wardrobe; photo frame,sofa; table; tv; wardrobe
+039,039_living_room_772.jpg,living_room_772.jpg,validation,16,sofa; table; lamp; tv; window; potted plant,sofa; table; tv
+040,040_living_room_392.jpg,living_room_392.jpg,validation,16,sofa; table; lamp; tv; door; photo frame,sofa; table; tv
+041,041_living_room_1p_514.jpg,living_room_1p (514).jpg,validation,27,sofa; chair; table; lamp; window; door; potted plant; photo frame,sofa; table
+042,042_living_room_408.jpg,living_room_408.jpg,validation,15,sofa; chair; table; lamp; window; door; potted plant; photo frame,sofa; table
+043,043_living_room_107.jpg,living_room_107.jpg,validation,14,sofa; chair; table; lamp; window; door; potted plant; photo frame,sofa; table
+044,044_living_room_363.jpg,living_room_363.jpg,validation,21,sofa; table; lamp; window; door; potted plant; photo frame,sofa; table
+045,045_living_room_46.jpg,living_room_46.jpg,validation,21,sofa; chair; table; window; door; potted plant; photo frame,sofa; table
+046,046_living_room_1p_243.jpg,living_room_1p (243).jpg,validation,19,sofa; chair; table; lamp; wardrobe; window; potted plant,sofa; table; wardrobe
+047,047_living_room_843.jpg,living_room_843.jpg,validation,18,sofa; chair; table; lamp; window; potted plant; photo frame,sofa; table
+048,048_living_room_1p_365.jpg,living_room_1p (365).jpg,validation,17,sofa; chair; table; lamp; window; door; photo frame,sofa; table
+049,049_living_room_1p_3.jpg,living_room_1p (3).jpg,validation,16,sofa; table; lamp; wardrobe; window; potted plant; photo frame,sofa; table; wardrobe
+050,050_living_room_311.jpg,living_room_311.jpg,validation,16,sofa; chair; table; lamp; window; potted plant; photo frame,sofa; table
+051,051_living_room_26.jpg,living_room_26.jpg,validation,16,sofa; chair; table; lamp; window; potted plant; photo frame,sofa; table
+052,052_living_room_131.jpg,living_room_131.jpg,validation,16,sofa; chair; table; lamp; window; potted plant; photo frame,sofa; table
+053,053_living_room_1p_546.jpg,living_room_1p (546).jpg,validation,15,sofa; chair; table; lamp; window; potted plant; photo frame,sofa; table
+054,054_living_room_335.jpg,living_room_335.jpg,validation,6,sofa; table; lamp; potted plant; photo frame,sofa; table
+055,055_living_room_196.jpg,living_room_196.jpg,validation,14,sofa; chair; table; lamp; door; potted plant; photo frame,sofa; table
+056,056_living_room_1p_169.jpg,living_room_1p (169).jpg,validation,14,sofa; chair; table; lamp; window; potted plant; photo frame,sofa; table
+057,057_living_room_627.jpg,living_room_627.jpg,validation,13,sofa; chair; table; lamp; wardrobe; window; photo frame,sofa; table; wardrobe
+058,058_living_room_1p_101.jpg,living_room_1p (101).jpg,validation,13,sofa; table; lamp; wardrobe; window; potted plant; photo frame,sofa; table; wardrobe
+059,059_living_room_42.jpg,living_room_42.jpg,validation,13,sofa; table; lamp; wardrobe; window; potted plant; photo frame,sofa; table; wardrobe
+060,060_living_room_1p_209.jpg,living_room_1p (209).jpg,validation,12,sofa; chair; table; lamp; wardrobe; potted plant; photo frame,sofa; table; wardrobe
+061,061_living_room_1p_160.jpg,living_room_1p (160).jpg,validation,12,sofa; chair; table; lamp; window; potted plant; photo frame,sofa; table
+062,062_living_room_1p_318.jpg,living_room_1p (318).jpg,validation,12,sofa; table; lamp; wardrobe; window; potted plant; photo frame,sofa; table; wardrobe
+063,063_living_room_424.jpg,living_room_424.jpg,validation,11,sofa; table; lamp; window; door; potted plant; photo frame,sofa; table
+064,064_living_room_367.jpg,living_room_367.jpg,validation,10,sofa; chair; table; lamp; window; door; potted plant,sofa; table
+065,065_living_room_1p_151.jpg,living_room_1p (151).jpg,validation,10,sofa; chair; table; lamp; wardrobe; potted plant; photo frame,sofa; table; wardrobe
+066,066_living_room_954.jpg,living_room_954.jpg,validation,27,sofa; chair; table; lamp; potted plant; photo frame,sofa; table
+067,067_living_room_675.jpg,living_room_675.jpg,validation,22,sofa; table; window; potted plant; photo frame,sofa; table
+068,068_living_room_1059.jpg,living_room_1059.jpg,validation,19,sofa; table; lamp; window; potted plant; photo frame,sofa; table
+069,069_living_room_752.jpg,living_room_752.jpg,validation,19,sofa; chair; table; window; potted plant; photo frame,sofa; table
+070,070_living_room_971.jpg,living_room_971.jpg,validation,17,sofa; table; lamp; window; potted plant; photo frame,sofa; table
+071,071_living_room_22.jpg,living_room_22.jpg,validation,17,sofa; table; lamp; door; potted plant; photo frame,sofa; table
+072,072_living_room_209.jpg,living_room_209.jpg,validation,17,sofa; table; lamp; potted plant; photo frame,sofa; table
+073,073_living_room_1p_173.jpg,living_room_1p (173).jpg,validation,17,sofa; table; window; potted plant,sofa; table
+074,074_living_room_809.jpg,living_room_809.jpg,validation,16,sofa; chair; table; lamp; potted plant; photo frame,sofa; table
+075,075_living_room_486.jpg,living_room_486.jpg,validation,16,sofa; chair; table; tv; window; potted plant,sofa; table; tv
+076,076_living_room_200.jpg,living_room_200.jpg,validation,16,sofa; table; wardrobe; window; potted plant,sofa; table; wardrobe
+077,077_living_room_359.jpg,living_room_359.jpg,validation,15,sofa; chair; table; lamp; window; potted plant,sofa; table
+078,078_living_room_1p_374.jpg,living_room_1p (374).jpg,validation,15,sofa; table; lamp; potted plant; photo frame,sofa; table
+079,079_living_room_593.jpg,living_room_593.jpg,validation,15,sofa; table; tv; window; potted plant,sofa; table; tv
+080,080_living_room_286.jpg,living_room_286.jpg,validation,15,sofa; chair; table; lamp; potted plant,sofa; table
+081,081_living_room_975.jpg,living_room_975.jpg,validation,27,chair; table; lamp; potted plant; photo frame,table
+082,082_living_room_1082.jpg,living_room_1082.jpg,validation,17,table; wardrobe; potted plant; photo frame,table; wardrobe
+083,083_living_room_1p_56.jpg,living_room_1p (56).jpg,validation,17,chair; table; potted plant; photo frame,table
+084,084_living_room_736.jpg,living_room_736.jpg,validation,17,table; window; potted plant,table
+085,085_living_room_892.jpg,living_room_892.jpg,validation,16,chair; table; lamp; window; potted plant; photo frame,table
+086,086_living_room_1p_425.jpg,living_room_1p (425).jpg,validation,16,chair; table; window; door; potted plant; photo frame,table
+087,087_living_room_1012.jpg,living_room_1012.jpg,validation,15,chair; table; window; photo frame,table
+088,088_living_room_278.jpg,living_room_278.jpg,validation,14,sofa; chair; table; tv; potted plant; photo frame,sofa; table; tv
+089,089_living_room_258.jpg,living_room_258.jpg,validation,14,sofa; chair; table; window; potted plant; photo frame,sofa; table
+090,090_living_room_570.jpg,living_room_570.jpg,validation,14,sofa; table; lamp; window; photo frame,sofa; table
+091,091_living_room_580.jpg,living_room_580.jpg,validation,15,chair; lamp; wardrobe; window; potted plant; photo frame,wardrobe
+092,092_living_room_420.jpg,living_room_420.jpg,validation,14,chair; table; lamp; potted plant; photo frame,table
+093,093_living_room_1p_469.jpg,living_room_1p (469).jpg,validation,13,sofa; chair; table; lamp; potted plant; photo frame,sofa; table
+094,094_living_room_514.jpg,living_room_514.jpg,validation,13,sofa; chair; table; lamp; window; potted plant,sofa; table
+095,095_living_room_440.jpg,living_room_440.jpg,validation,12,sofa; chair; table; lamp; window; potted plant,sofa; table
+096,096_living_room_270.jpg,living_room_270.jpg,validation,13,sofa; chair; table; lamp; potted plant; photo frame,sofa; table
+097,097_living_room_696.jpg,living_room_696.jpg,validation,13,sofa; chair; table; door; potted plant; photo frame,sofa; table
+098,098_living_room_148.jpg,living_room_148.jpg,validation,13,sofa; chair; table; window; potted plant,sofa; table
+099,099_living_room_1p_298.jpg,living_room_1p (298).jpg,validation,13,sofa; table; lamp; window; potted plant,sofa; table
+100,100_living_room_246.jpg,living_room_246.jpg,validation,13,sofa; chair; table; potted plant,sofa; table
