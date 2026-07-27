@@ -1,7 +1,5 @@
 # MoveAI Prototype
 
-Interactive partial prototype for Presentation 2:
-
 `language + room image → Grounding DINO → SAM 2 → Depth Pro → Open3D OBB`
 
 This file covers how to run the prototype. For the architecture, design rationale, and how this fits the wider product, see [`../DESIGN.md`](../DESIGN.md).
@@ -17,20 +15,7 @@ This file covers how to run the prototype. For the architecture, design rational
 
 All four AI/geometry stages are live. Pricing is intentionally excluded rather than simulated.
 
-## UI and showcase design
-
-The frontend has been updated for a presentation-ready look:
-
-- professional dark gradient background with improved contrast;
-- consistent typography and spacing for readability on projector screens;
-- visual hierarchy with hero header, pipeline strip, metric cards, and polished tabs;
-- improved sidebar styling for controls;
-- warning and review states clearly highlighted in amber;
-- inventory and timing tables framed as report panels.
-
-This keeps the design clean for pitching while preserving technical transparency.
-
-## Run the showcase
+## Run the app
 
 From this folder:
 
@@ -46,18 +31,7 @@ http://127.0.0.1:8505
 
 The first complete analysis takes approximately three minutes on the current 8 GB Apple-Silicon Mac. Depth Pro is the dominant stage.
 
-## Demo path
-
-1. Choose a real-world sample or upload a room image.
-2. Edit the language prompt to control which furniture categories are searched.
-3. Keep the detection threshold around `0.30`.
-4. Click **Run full AI pipeline**.
-5. Show:
-   - Grounding DINO boxes and SAM 2 masks;
-   - Depth Pro metric-depth map;
-   - Open3D point cloud and bounding box;
-   - itemized inventory and exported JSON.
-6. Use the timing panel to explain runtime and where optimization is needed.
+Usage: choose a real-world sample or upload a room image, edit the language prompt to control which furniture categories are searched (detection threshold around `0.30` is a reasonable default), then click **Run full AI pipeline**. Results appear in four tabs (detect + segment, metric depth, Open3D, inventory), with an itemized inventory downloadable as JSON and a timing breakdown in the bottom expander.
 
 ## Command-line verification
 

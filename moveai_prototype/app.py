@@ -31,104 +31,8 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown(
-    """
-    <style>
-      :root {
-        --bg:#08111f;
-        --panel:#0f1d33;
-        --panel-2:#132642;
-        --line:#27466c;
-        --text:#e8f1ff;
-        --muted:#b3c3dc;
-        --accent:#37c6ff;
-        --good:#7ff0b0;
-        --warn:#ffc46b;
-      }
-      html, body, [class*="css"] {
-        font-family: "Inter", "Segoe UI", Roboto, sans-serif;
-      }
-      [data-testid="stAppViewContainer"]{
-        background: radial-gradient(1800px 900px at 18% -12%, #1d3661 0%, var(--bg) 52%);
-      }
-      [data-testid="stSidebar"]{
-        background: linear-gradient(180deg, #0a172b, #0b1a30);
-        border-right: 1px solid #1d3655;
-      }
-      .block-container {padding-top: 1.5rem; padding-bottom: 2.8rem;}
-      .hero {
-        padding: 1.55rem 1.75rem;
-        border-radius: 20px;
-        background: linear-gradient(120deg, #102543, #183560 58%, #1f3f70);
-        border: 1px solid #2f5787;
-        margin-bottom: 0.95rem;
-        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
-      }
-      .hero h1 {margin: 0; font-size: 2.1rem; letter-spacing: .2px;}
-      .hero p {margin: .45rem 0 0; color: var(--muted);}
-      .pipeline-strip {
-        margin: .55rem 0 1.25rem;
-        padding: .7rem .9rem;
-        border-radius: 14px;
-        border: 1px solid var(--line);
-        background: rgba(16, 31, 52, .72);
-      }
-      .stage {
-        display:inline-block; padding:.38rem .62rem; margin:.15rem;
-        border-radius:999px; background: #162c4b; border:1px solid #345d88;
-        color: #d6e8ff; font-size: .91rem;
-      }
-      .actual {color:var(--good); font-weight:700;}
-      .glass-card {
-        background: linear-gradient(180deg, rgba(19,38,66,.92), rgba(14,29,49,.9));
-        border:1px solid var(--line);
-        border-radius: 14px;
-        padding: .95rem 1rem;
-      }
-      .warning {
-        padding:.8rem 1rem; border-left:4px solid var(--warn);
-        background:#322618; border-radius:8px; margin-top:.7rem;
-      }
-      [data-testid="stMetric"] {
-        background: linear-gradient(180deg, rgba(20,38,64,.92), rgba(15,29,49,.9));
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: .45rem .55rem;
-      }
-      [data-testid="stTabs"] [data-baseweb="tab-list"]{
-        gap: .35rem; border-bottom: 1px solid #27496f;
-      }
-      [data-testid="stTabs"] [data-baseweb="tab"]{
-        background: #142744;
-        border: 1px solid #2e527a;
-        border-bottom: none;
-        border-radius: 10px 10px 0 0;
-        color: #d8e8ff;
-        padding: .45rem .8rem;
-      }
-      [data-testid="stTabs"] [aria-selected="true"]{
-        background: #1d3a63 !important;
-        color: #fff !important;
-      }
-      [data-testid="stDataFrame"], [data-testid="stExpander"]{
-        border:1px solid var(--line); border-radius:10px;
-      }
-    </style>
-    <div class="hero">
-      <h1>MoveAI Volume Lab</h1>
-      <p>Language-guided furniture detection and experimental single-image 3D measurement.</p>
-    </div>
-    <div class="pipeline-strip">
-      <span class="stage">Input image + language</span> →
-      <span class="stage">Grounding DINO</span> →
-      <span class="stage">SAM 2</span> →
-      <span class="stage">Depth Pro</span> →
-      <span class="stage">Open3D OBB</span>
-      <span class="actual"> All stages are live</span>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+st.title("MoveAI Volume Lab")
+st.caption("Language-guided furniture detection and single-image 3D measurement.")
 
 
 def load_selected_image() -> tuple[Image.Image | None, str]:
@@ -156,15 +60,14 @@ def load_selected_image() -> tuple[Image.Image | None, str]:
 def result_rows(result: PipelineResult) -> list[dict[str, object]]:
     rows = []
     for index, item in enumerate(result.measurements, start=1):
-        length, width, height = item.dimensions_m
         rows.append(
             {
                 "#": index,
                 "Item": item.label,
                 "Detection confidence": round(item.detection_score, 3),
-                "OBB edge 1 (m)": round(float(length), 3),
-                "OBB edge 2 (m)": round(float(width), 3),
-                "OBB edge 3 (m)": round(float(height), 3),
+                "Width (m)": round(item.width_m, 3),
+                "Height (m)": round(item.height_m, 3),
+                "Depth (m)": round(item.depth_m, 3),
                 "Visible OBB (m³)": round(item.visible_obb_volume_m3, 4),
                 "Visible OBB (ft³)": round(
                     item.visible_obb_volume_m3 * 35.3147,
@@ -213,28 +116,15 @@ with left:
     st.subheader("Input photograph")
     st.image(image, caption=image_name, width="stretch")
 with right:
-    st.subheader("What this prototype proves")
-    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.subheader("Pipeline")
     st.markdown(
-        """
-        - Furniture categories are controlled with **language input**.
-        - Detection boxes become precise object masks.
-        - Metric depth is estimated without camera metadata.
-        - Masked depth pixels become a 3D point cloud.
-        - Open3D fits a bounding box around each visible surface.
-        """
+        "Grounding DINO → SAM 2 → Depth Pro → Open3D OBB"
     )
-    st.markdown(
-        """
-        <div class="warning">
-        <strong>Measurement status: experimental.</strong><br>
-        A single photograph cannot reveal hidden surfaces. The resulting volume is
-        a visible-surface lower bound—not yet a quote-ready transport volume.
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.info(
+        "Measurement status: experimental. A single photograph cannot reveal "
+        "hidden surfaces, so the resulting volume is a visible-surface lower "
+        "bound, not a quote-ready transport volume."
     )
-    st.markdown("</div>", unsafe_allow_html=True)
 
 if analyze:
     classes = [part.strip() for part in prompt_text.split(",") if part.strip()]
@@ -321,10 +211,10 @@ with cloud_tab:
             point_cloud_figure(measurement),
             width="stretch",
         )
-        length, width, height = measurement.dimensions_m
         st.caption(
-            f"Open3D OBB edges: {length:.2f} × {width:.2f} × "
-            f"{height:.2f} m · {measurement.point_count:,} depth points"
+            f"Width × Height × Depth: {measurement.width_m:.2f} × "
+            f"{measurement.height_m:.2f} × {measurement.depth_m:.2f} m · "
+            f"{measurement.point_count:,} depth points"
         )
         st.warning(measurement.warning)
     else:
@@ -352,11 +242,9 @@ with st.expander("Pipeline timing and human-control policy"):
         for stage, seconds in result.timings_s.items()
     ]
     st.dataframe(timing_rows, hide_index=True, width="stretch")
-    st.markdown(
-        """
-        **Human control:** users confirm the generated inventory and moving-company
-        staff review low-confidence detections or implausible dimensions. Pricing
-        remains outside this prototype and is not simulated here.
-        """
+    st.caption(
+        "Users confirm the generated inventory; low-confidence detections or "
+        "implausible dimensions should be reviewed manually. Pricing is not "
+        "simulated here."
     )
 

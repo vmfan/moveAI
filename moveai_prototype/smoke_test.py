@@ -42,7 +42,9 @@ def main() -> None:
             {
                 "label": measurement.label,
                 "score": measurement.detection_score,
-                "obb_edges_m": measurement.dimensions_m.tolist(),
+                "width_m": measurement.width_m,
+                "height_m": measurement.height_m,
+                "depth_m": measurement.depth_m,
                 "visible_obb_volume_m3": measurement.visible_obb_volume_m3,
                 "median_depth_m": measurement.median_depth_m,
                 "warning": measurement.warning,

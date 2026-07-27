@@ -63,7 +63,7 @@ def render_masks(image: Image.Image, detections) -> Image.Image:
 
 
 def render_3d_box(item: dict, output_path: Path) -> None:
-    length, width, height = item["obb_edges_m"]
+    length, width, height = item["width_m"], item["height_m"], item["depth_m"]
     corners = np.asarray(
         [
             [0, 0, 0],
@@ -151,9 +151,9 @@ def main() -> None:
         {
             "object": item["label"],
             "confidence": round(item["score"], 3),
-            "dimensions_m": [
-                round(float(value), 3) for value in item["obb_edges_m"]
-            ],
+            "width_m": round(float(item["width_m"]), 3),
+            "height_m": round(float(item["height_m"]), 3),
+            "depth_m": round(float(item["depth_m"]), 3),
             "visible_volume_m3": round(item["visible_obb_volume_m3"], 3),
         }
         for item in measured_items
