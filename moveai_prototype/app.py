@@ -13,7 +13,10 @@ APP_DIR = Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
+import db
+import job_context
 from config import DEFAULT_FURNITURE_CLASSES, PipelineConfig
+from inventory_sync import persist_capture
 from pipeline import PipelineResult, run_pipeline
 from visualization import (
     point_cloud_figure,
@@ -79,8 +82,12 @@ def result_rows(result: PipelineResult) -> list[dict[str, object]]:
     return rows
 
 
+conn = job_context.get_connection()
+active_job_id = job_context.render_sidebar_job(conn)
+
 st.sidebar.header("Prototype controls")
 image, image_name = load_selected_image()
+room_label = st.sidebar.text_input("Room", value="Living room")
 prompt_text = st.sidebar.text_area(
     "Furniture language prompt",
     value=", ".join(DEFAULT_FURNITURE_CLASSES),
@@ -142,6 +149,23 @@ if analyze:
         st.session_state["pipeline_result"] = result
         st.session_state["pipeline_image_name"] = image_name
         progress_bar.empty()
+
+        if active_job_id is not None:
+            summary = persist_capture(
+                conn,
+                active_job_id,
+                measurements=result.measurements,
+                failures=result.measurement_errors,
+                room_label=room_label or None,
+                source_image_name=image_name,
+                focal_length_px=result.focal_length_px,
+            )
+            db.set_job_status(conn, active_job_id, "inventory_review")
+            st.success(
+                f"Saved {len(summary['measured_item_ids'])} item(s) "
+                f"({len(summary['escalated_item_ids'])} escalated) to job "
+                f"#{active_job_id}."
+            )
     except Exception as exc:
         progress_bar.empty()
         st.error(f"Pipeline failed: {exc}")
@@ -233,8 +257,8 @@ with inventory_tab:
         )
     if result.measurement_errors:
         with st.expander("Objects requiring human review"):
-            for error in result.measurement_errors:
-                st.write(error)
+            for failure in result.measurement_errors:
+                st.write(failure.display)
 
 with st.expander("Pipeline timing and human-control policy"):
     timing_rows = [

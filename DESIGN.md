@@ -255,7 +255,7 @@ Every number introduced above — class-prior dimensions, box-count-per-storage-
 | **Small items** | None — every detection measured and reported identically | Size floor below which items become density evidence, not inventory lines | Floor threshold; evidence feeds boxed-goods seed instead of being measured or discarded |
 | **Boxed goods** | No representation at all | Seeded box-equivalent line from detected storage + room count/type, customer-adjusted | Boxed-goods estimator ([§4](#4-mvp-target-architecture)); `declared` line type ([§5a](#5a-inter-stage-data-schemas)) |
 | **Latency** | ~3 min/image; models loaded and freed per stage | Interactive turnaround on a full walkthrough | Resident models on adequate GPU; batching; the 8 GB constraint no longer applies |
-| **Persistence** | None — in-memory, lost on rerun | Jobs, inventories, amendments, quotes all durable | Storage layer; serializable schemas per §5a |
+| **Persistence** | ~~None (in-memory, lost on rerun)~~ Schema + job spine wired into the UI — **done, `IMPLEMENTATION_ROADMAP.md` Builds 2 & 4** | Jobs, inventories, amendments, quotes all durable | Inventory-review amendments (Build 5) and quote/booking wiring (Builds 6–7) remain |
 | **Review policy** | Blanket warning on every item; errors listed in an expander | Three named states, fired only by implausibility | Policy per §5b; shell-ratio and border-truncation checks; per-class plausibility ranges |
 | **Pricing** | ~~None (intentionally)~~ Engine implemented — **done, `IMPLEMENTATION_ROADMAP.md` Build 3** | Upper-bound quote + truck recommendation; surcharge scoped to declared-quantity error | Wiring into the UI (Builds 4–7) |
 

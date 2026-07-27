@@ -55,7 +55,9 @@ def main() -> None:
             {
                 "focal_length_px": result.focal_length_px,
                 "timings_s": result.timings_s,
-                "measurement_errors": result.measurement_errors,
+                "measurement_errors": [
+                    failure.display for failure in result.measurement_errors
+                ],
                 "inventory": inventory,
             },
             indent=2,

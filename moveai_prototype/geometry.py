@@ -41,6 +41,36 @@ class ObjectMeasurement:
     box_corners: np.ndarray
     warning: str
     used_axis_aligned_fallback: bool
+    mask_touches_border: bool
+
+
+@dataclass(frozen=True)
+class MeasurementFailure:
+    """A detection that failed to measure -- DESIGN.md SS5b: "a failed
+    measurement is never silently dropped", so this carries enough to
+    become a staff-escalated inventory row rather than a log line.
+    """
+
+    index: int
+    label: str
+    detection_score: float
+    message: str
+
+    @property
+    def display(self) -> str:
+        return f"{self.index}. {self.label}: {self.message}"
+
+
+def _mask_touches_border(mask: np.ndarray) -> bool:
+    """DESIGN.md SS5b border-truncation signal: the mask touches an image
+    edge, so the object is likely cropped rather than fully captured.
+    """
+    return bool(
+        mask[0, :].any()
+        or mask[-1, :].any()
+        or mask[:, 0].any()
+        or mask[:, -1].any()
+    )
 
 
 def _resize_mask(mask: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
@@ -198,6 +228,7 @@ def measure_detection(
         box_corners=corners,
         warning=warning,
         used_axis_aligned_fallback=used_axis_aligned_fallback,
+        mask_touches_border=_mask_touches_border(detection.mask),
     )
 
 
@@ -207,9 +238,9 @@ def measure_all(
     focal_length_px: float,
     detections: list[Detection],
     config: PipelineConfig,
-) -> tuple[list[ObjectMeasurement], list[str]]:
+) -> tuple[list[ObjectMeasurement], list[MeasurementFailure]]:
     measurements: list[ObjectMeasurement] = []
-    errors: list[str] = []
+    errors: list[MeasurementFailure] = []
     for index, detection in enumerate(detections, start=1):
         try:
             measurements.append(
@@ -222,6 +253,13 @@ def measure_all(
                 )
             )
         except (ValueError, RuntimeError) as exc:
-            errors.append(f"{index}. {detection.label}: {exc}")
+            errors.append(
+                MeasurementFailure(
+                    index=index,
+                    label=detection.label,
+                    detection_score=detection.score,
+                    message=str(exc),
+                )
+            )
     return measurements, errors
 

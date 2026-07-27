@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from config import PipelineConfig
-from geometry import ObjectMeasurement, measure_all
+from geometry import MeasurementFailure, ObjectMeasurement, measure_all
 from models import (
     Detection,
     best_device,
@@ -29,7 +29,7 @@ class PipelineResult:
     depth_m: np.ndarray
     focal_length_px: float
     measurements: list[ObjectMeasurement]
-    measurement_errors: list[str]
+    measurement_errors: list[MeasurementFailure]
     timings_s: dict[str, float] = field(default_factory=dict)
 
     @property
