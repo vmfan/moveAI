@@ -16,7 +16,7 @@ The Hugging Face model cache is not populated in this dev environment, and `move
 | # | Build | Depends on | Status |
 |---|---|---|---|
 | 1 | Axis-semantics fix (`geometry.py`) | — | Complete |
-| 2 | SQLite persistence layer (`db.py`) | 1 | Not started |
+| 2 | SQLite persistence layer (`db.py`) | 1 | Complete |
 | 3 | Pricing engine + boxed-goods estimator (`pricing.py`, `boxed_goods.py`, `priors.py` stub) | 1, 2 | Not started |
 | 4 | Intake page + job-spine integration into `app.py` | 2 | Not started |
 | 5 | Inventory Review page | 2, 3, 4 | Not started |
@@ -29,7 +29,11 @@ The Hugging Face model cache is not populated in this dev environment, and `move
 
 Verification note: the full pipeline couldn't run end-to-end in this environment (Grounding DINO isn't cached locally and `local_files_only=True` blocks the download — pre-existing, unrelated to this change). Verified instead with a synthetic-scene unit check that exercises the real `measure_detection`/`_named_dimensions` code path via Open3D: a frontal-shell object correctly resolves `depth_m` as the smallest axis, plus direct checks of `_named_dimensions` against identity and rotated rotation matrices. All four edited files pass `py_compile`.
 
-**Build 2 — SQLite persistence layer.** New `db.py`: tables for `job`, `intake`, `inventory_item` (unifies measured/prior_assisted/declared items and boxed-goods lines via `measurement_basis` + `is_boxed_goods`), `pricing_config` (company-configurable, seeded with a default row), `quote`/`quote_line` (versioned — new quotes are inserted, never mutated, prior version flagged superseded), `booking`. See `DESIGN.md` §5a/§5c for the contracts this schema must satisfy.
+**Build 2 — SQLite persistence layer.** New `db.py`: tables for `job`, `intake`, `inventory_item` (unifies measured/prior_assisted/declared items and boxed-goods lines via `measurement_basis` + `is_boxed_goods`), `pricing_config` (company-configurable, seeded with a default row, currency HKD), `quote`/`quote_line` (versioned — new quotes are inserted, never mutated, prior version flagged superseded), `booking`. See `DESIGN.md` §5a/§5c for the contracts this schema must satisfy. Stdlib `sqlite3` only, no ORM; module stays free of Streamlit/pipeline imports so it can run without the model stack. `config.py` gained `DB_PATH` (overridable via `MOVEAI_DB_PATH`).
+
+Contracts from §5a/§5c are enforced as schema `CHECK` constraints rather than left as convention: boxed-goods lines can't carry dimensions, `measured` items can't carry `prior_assisted_axes`, `quote_line.surcharge_eligible` is forced to agree with `measurement_basis` (the surcharge contract), and a partial unique index caps `pricing_config` at one active row. `customer_confirmed` is a column separate from `review_state` so confirming an item structurally cannot clear a staff escalation. Quotes are versioned by inserting a new row and flagging the previous one superseded within `create_quote()`, never mutating in place.
+
+Verification: `db_smoke_test.py` (committed) exercises the full job → intake → inventory → quote-v1 → quote-v2 → booking lifecycle against a throwaway SQLite file, including an intake re-submit (upsert, not duplicate), all four inventory line types, the customer-confirm/staff-escalate independence rule, and four negative cases each asserting `sqlite3.IntegrityError` on a `CHECK`/unique-index violation. 24/24 checks pass; `db.py`, `db_smoke_test.py`, and `config.py` pass `py_compile`. No substitution needed — this module needs no model weights, so it was verified for real rather than synthetically.
 
 **Build 3 — pricing engine + boxed-goods estimator.** Pure functions, no I/O, mirroring `pipeline.py`/`geometry.py` staying Streamlit-agnostic. `upper_bound_volume_m3()` is the single place the margin is applied. `access_multiplier()` from intake floor/lift/parking data. Boxed-goods gets its own labour weight on top. `recommend_truck()` stays a separate function from pricing per `DESIGN.md` §5c. `priors.py` is a stub (`flag_implausible_dimension()` always no-flag) — no fabricated class-priors table this milestone.
 

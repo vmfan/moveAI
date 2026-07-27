@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DEPTH_PRO_CHECKPOINT = PROJECT_DIR / "checkpoints" / "depth_pro.pt"
+DB_PATH = Path(os.environ.get("MOVEAI_DB_PATH", PROJECT_DIR / "moveai.db"))
 
 GROUNDING_DINO_MODEL = "IDEA-Research/grounding-dino-tiny"
 SAM2_MODEL = "facebook/sam2.1-hiera-tiny"

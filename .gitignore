@@ -4,5 +4,8 @@ moveai_prototype/.venv/
 moveai_prototype/checkpoints/*.pt
 moveai_prototype/outputs/*
 !moveai_prototype/outputs/.gitkeep
+moveai_prototype/*.db
+moveai_prototype/*.db-wal
+moveai_prototype/*.db-shm
 **/__pycache__/
 **/*.pyc

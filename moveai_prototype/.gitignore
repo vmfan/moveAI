@@ -5,4 +5,7 @@ __pycache__/
 checkpoints/*.pt
 outputs/*
 !outputs/.gitkeep
+*.db
+*.db-wal
+*.db-shm
 
