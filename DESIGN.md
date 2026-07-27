@@ -1,0 +1,269 @@
+# MoveAI — Design
+
+## 1. Problem and product shape
+
+Moving companies quote in one of two ways today, and both are bad.
+
+**Photo-and-eyeball.** The customer sends a handful of phone photos; a staff member guesses the volume. Fast, but the estimate carries no measurement behind it. Under-quote and the company absorbs the loss; over-quote and the customer books elsewhere.
+
+**On-site survey.** The company sends someone to measure. Accurate, but it burns a half-day of staff time per lead, forces the customer to take time off, and delays the quote by days — during which the customer is collecting competing bids.
+
+MoveAI is a B2B2C SaaS sold to moving companies that replaces this step: the customer captures their space once, and the system produces a measured inventory and a quote.
+
+### Target user workflow
+
+1. **Intake.** The customer answers structured questions: contact details, origin and destination addresses, floor, lift access, parking distance.
+2. **Capture.** The customer uploads a video or photo walkthrough of the space.
+3. **Inventory.** After processing, the customer reviews what was found, grouped by room. They confirm whether everything they intend to move is included, and add anything missing — by manual entry, or by photographing it so its volume is estimated too.
+4. **Quote.** Once the inventory is confirmed, the system presents a price and truck recommendation, and asks whether to book.
+5. **Booking.** Accepted bookings land in the company's request queue, where staff verify the job is safe to proceed or ask the customer for clarification.
+
+### What this repository currently contains
+
+**Only the volume-estimation core of step 3, for a single image.** Given one room photo and a list of furniture category names, it detects those items, segments them, estimates metric depth, and fits a 3D bounding box per object. There is no intake, no video, no room grouping, no persistence, and no pricing.
+
+Everything in [§2](#2-what-is-built-today) is implemented and running. Everything in [§4](#4-mvp-target-architecture) is not yet built. [§6](#6-gap-analysis) is the distance between them.
+
+---
+
+## 2. What is built today
+
+```
+room image + furniture class names
+  → Grounding DINO   (text → boxes)
+  → SAM 2.1 Tiny     (boxes → masks)
+  → Depth Pro        (image → metric depth + focal length)
+  → Open3D           (masked depth → point cloud → oriented bounding box)
+  → per-object dimensions and visible volume
+```
+
+Four stages run sequentially in `moveai_prototype/pipeline.py`, driven either by a Streamlit UI (`app.py`) or a CLI smoke test (`smoke_test.py`). Tuning constants live in one frozen dataclass, `PipelineConfig` (`config.py:31`).
+
+### Input preparation
+
+`prepare_image` (`pipeline.py:40`) applies EXIF transpose, converts to RGB, and downscales with LANCZOS so the longest side is at most 1280 px. The cap bounds Depth Pro's memory footprint, which dominates the run.
+
+### Stage 1 — Grounding DINO: language to boxes
+
+`detect_furniture` (`models.py:85`) runs `IDEA-Research/grounding-dino-tiny` for zero-shot text-conditioned detection. The customer-supplied class list becomes the text prompt, so detection vocabulary is controlled at request time rather than baked into trained weights — the reason a zero-shot detector was chosen over a fixed-class model.
+
+Post-processing applies `box_threshold=0.30` and `text_threshold=0.25`, then `_class_aware_nms` (`models.py:70`) at IoU 0.50. The NMS is deliberately **class-aware**: it suppresses overlapping boxes only when they carry the same label, so a lamp standing in front of a sofa survives instead of being merged away. Results are truncated to `max_detections=8`.
+
+### Stage 2 — SAM 2.1 Tiny: boxes to masks
+
+`segment_detections` (`models.py:133`) prompts `facebook/sam2.1-hiera-tiny` with every detection box in a single batch, with `multimask_output=False` — one mask per box, no ambiguity resolution step. Masks are post-processed back to the original image size and attached to their `Detection`.
+
+A mask rather than a box is what makes the geometry stage viable: back-projecting a rectangular box would pull in wall and floor pixels behind the object and inflate its depth extent.
+
+### Stage 3 — Depth Pro: metric depth from one uncalibrated photo
+
+`estimate_metric_depth` (`models.py:167`) loads Apple's Depth Pro from `checkpoints/depth_pro.pt` in fp16 on MPS/CUDA, fp32 otherwise.
+
+It is called with **`f_px=None`**, so the model predicts focal length itself alongside the depth map. This is the linchpin of the whole approach: it is what allows a metric measurement from an arbitrary phone photo with no calibration step, no reference object in frame, and no EXIF intrinsics. Every downstream number depends on that predicted focal being right.
+
+### Stage 4 — Open3D: depth to bounding box
+
+`geometry.py` converts each masked depth region into a fitted box.
+
+`_masked_point_cloud` (`geometry.py:53`) back-projects with a pinhole model, using the predicted focal length and **assuming the principal point is the image center** (`geometry.py:89-91`) — true enough for uncropped phone photos, wrong for cropped or heavily edited ones. Points are produced in a camera-frame coordinate system: +x right, +y up, +z away from the camera.
+
+Filtering happens in three passes, each for a distinct failure mode:
+
+| Filter | Purpose |
+|---|---|
+| Depth clamp to `[0.20, 12.0]` m | Discards sensor-implausible depths outright |
+| 5–95% quantile band within the mask | Removes background bleed where the mask spills past the object edge |
+| Statistical outlier removal (20 neighbours, 2.0 σ) | Removes speckle that would stretch the fitted box |
+
+The cloud is subsampled to at most 12,000 points, then `get_minimal_oriented_bounding_box(robust=True)` fits the box. If that fails, the code falls back to an axis-aligned box and records the substitution in the measurement's `warning` string (`geometry.py:143-147`) — the fallback is never silent.
+
+Volume is the product of the box extents.
+
+### Cross-cutting decisions
+
+**Device selection.** `best_device()` (`models.py:36`) prefers MPS, then CUDA, then CPU, with `PYTORCH_ENABLE_MPS_FALLBACK=1` set at import so unsupported ops degrade to CPU instead of crashing.
+
+**Load-infer-release per stage.** Every stage constructs its model, runs, then calls `release_memory()` (`models.py:44`), which drops references, forces a GC pass, and empties the accelerator cache. No model stays resident between stages.
+
+This is an intentional concession to the 8 GB unified-memory machine the prototype was built on — the three models cannot coexist there. It is *also* why a full run takes roughly three minutes, most of it spent loading weights rather than computing. It is a known tradeoff, correct for a demo and the first thing that must change for the MVP.
+
+**Per-object error isolation.** `measure_all` (`geometry.py:168`) catches per-object failures and collects them into `measurement_errors` rather than aborting. One un-measurable object degrades the inventory; it does not destroy the run.
+
+**No network at inference.** All Hugging Face loads pass `local_files_only=True`; the Depth Pro checkpoint is a local file whose absence raises a clear `FileNotFoundError`.
+
+---
+
+## 3. Known limitations of the current measurement
+
+**The single-view error is anisotropic, not uniform.** The fitted box contains only surfaces visible from one camera position, but the error this introduces is not spread evenly across the three axes. A frontal photo measures an object's *frontal* extents — length and height — reasonably well, because those edges are directly visible. It measures *depth* badly, because the far side, underside, and any occluded surface are never reconstructed: a sofa shot head-on can fit a box barely 0.2 m deep against a true depth near 0.9 m. Every measurement therefore carries a standing warning (`geometry.py:139`), and the number is not a quote-ready transport volume.
+
+This matters beyond "the number is wrong": depth is also the axis with the *least* variation across a furniture class (sofas run roughly 0.85–1.0 m deep regardless of style, while length ranges 1.5–3.5 m). That means the specific axis a single photo measures worst is the one a class-specific prior can best replace — see [§4](#4-mvp-target-architecture) and [§5b](#5b-confidence-and-human-review-rules).
+
+**Axis semantics are discarded.** `dimensions_m` sorts the three extents descending (`geometry.py:150`), so the output records three edge lengths but not which is width, height, or depth — the UI honestly labels them "OBB edge 1/2/3" (`app.py:165-167`). This was already insufficient for doorway, lift, and stairwell clearance checks; it now also blocks the anisotropic-error handling above, since substituting a prior for "the occluded axis" first requires knowing which extent that is.
+
+**Total volume is a naive sum.** `total_visible_volume_m3` (`pipeline.py:36`) adds per-object box volumes with no packing factor, no void allowance, no handling of overlapping or nested boxes, and no disassembly assumptions. Real transport volume is not the sum of bounding boxes.
+
+**Subsampling is raster-ordered.** Points are decimated with `np.linspace` over pixels in scan order (`geometry.py:81-87`) rather than randomly, introducing a mild spatial bias on large objects.
+
+**Recall depends on the prompt.** An item whose category is not in the class list is never detected, and nothing signals its absence. Acceptable when a presenter drives the demo; unacceptable when the output is a price.
+
+**There is no notion of small items.** Every detection, regardless of size, is measured and reported identically. In a real household move, boxed goods (books, kitchenware, clothing) typically make up roughly half of total volume and carry the highest labour-per-volume of anything moved — yet nothing here distinguishes "measure this precisely" from "this is bulk goods, estimate it." There is also no boxed-goods path at all: no way to represent "40 boxes" as an inventory line.
+
+---
+
+## 4. MVP target architecture
+
+### Component flow
+
+```
+intake form ─┐
+             ├→ capture (video / photo walkthrough)
+             │    → ingestion & keyframe selection
+             │      → per-frame perception  (detect → segment → depth)
+             │        → cross-frame fusion & object identity
+             │          → room segmentation & assignment
+             │            → class-priors table  (plausibility bounds · occluded-axis substitution · box-count ratios)
+             │            → boxed-goods estimator  (seeded from detected storage + room count/type)
+             │              → inventory assembly
+             │                → customer review & amendment loop
+             └────────────────→ quote & truck recommendation
+                                 → booking request queue
+                                   → company review console
+```
+
+The current pipeline becomes the **per-frame perception** box. Everything else is new.
+
+The **class-priors table** is a single artifact serving three distinct jobs: bounding what a plausible dimension looks like per furniture class ([§5b](#5b-confidence-and-human-review-rules)), substituting a value for an axis a photo can't see ([§4](#4-mvp-target-architecture) below), and seeding expected box counts for detected storage furniture ([§5c](#5c-volume--quote-contract)). Building it once and using it three ways keeps those three policies from drifting apart.
+
+### The hard sub-problems
+
+Video walkthrough serves two different goals that this doc previously bundled together as one "multi-view fusion" problem: **coverage** (finding every object, grouping them by room) and **precision** (getting a better volume than one photo gives). Coverage requires video. Precision, it turns out, mostly doesn't — see the anisotropic-error discussion in [§3](#3-known-limitations-of-the-current-measurement): a photo already measures an object's high-variance axes (length, height) well, and the one axis it measures badly (depth) is exactly the axis a class prior predicts best. That demotes true multi-view fusion (structure-from-motion, pose estimation, 3D scene accumulation) from a critical-path requirement to a later precision upgrade, worth revisiting once real jobs are compared against actual moved volume ([Calibration](#calibration)).
+
+The problems below are stated as requirements with candidate approaches; **no model or vendor is committed to yet**, and that choice should be made against measured results rather than in this document.
+
+**Keyframe selection.** A walkthrough video is thousands of frames; perception is far too expensive to run on all of them. The system must choose a subset that covers every object from enough distinct viewpoints — for detection and room coverage, not for per-object 3D fusion. Candidates range from cheap signals (motion and blur scoring, fixed-interval sampling) to coverage-driven selection that keeps adding frames until each tracked object has been seen clearly at least once. The tradeoff is GPU cost against recall, and it is the main lever on per-job unit economics.
+
+**Cross-frame object identity.** One physical sofa appearing in forty frames must become one inventory line. This is the problem with the worst failure modes in the whole system, and they are asymmetric: **splitting** one object into two inflates the quote and loses the customer, while **merging** two identical dining chairs into one under-quotes and costs the company on moving day. Association can lean on appearance embeddings, on rough 3D position (even without full pose recovery, approximate position from frame-to-frame tracking helps), or on simple frame-to-frame tracking — position-based association is generally stronger here precisely because furniture in the same room is often visually identical.
+
+**Room segmentation and assignment.** The inventory must group by room, which requires deciding where one room ends and the next begins in a continuous walkthrough, and giving each a human-meaningful label. Doorway transitions are detectable both visually and from the camera trajectory; labelling is a scene-classification problem, and may be better solved by simply asking the customer to confirm room names than by inferring them.
+
+**Open-vocabulary inventory.** Recall must stop depending on the customer naming categories correctly. The detector needs to enumerate movable objects on its own, with the class list becoming a prior rather than a filter. This also changes the error surface: the system will start finding things the customer does not intend to move, making the step-3 review loop load-bearing rather than a formality.
+
+**Deferred: true multi-view fusion.** Accumulating multiple views into one 3D reconstruction (via device sensor pose — ARKit/ARCore — or structure-from-motion) remains the eventual path to a defensible volume beyond what priors approximate. It is not required for the MVP and should be picked up once prior-based estimates have been measured against real outcomes and shown to need it.
+
+---
+
+## 5. Behavior contracts
+
+These are the invariants that must hold across both the current pipeline and everything added later. They exist because the components will be built at different times, and because the output carries financial consequences.
+
+### 5a. Inter-stage data schemas
+
+Today the pipeline passes in-memory dataclasses holding raw NumPy arrays — `Detection` (`models.py:29`), `ObjectMeasurement` (`geometry.py:30`), `PipelineResult` (`pipeline.py:26`) — and the only serialized artifact is the flattened JSON inventory built by `result_rows` (`app.py:156`). That is sufficient for a single-process demo and insufficient for a system where frames are processed independently, possibly out of order, and results are stored and revisited.
+
+**Global conventions, stated once and enforced everywhere:**
+
+- All lengths in **metres**, all volumes in **cubic metres**. Imperial units are a presentation concern only and never enter a stored payload.
+- Point coordinates are camera-frame: **+x right, +y up, +z away from camera** (`geometry.py:91-93`). Any world-frame data must be explicitly labelled as such.
+- Every confidence is a `[0, 1]` float, and the signal it came from is named. There is no bare "score" field.
+
+**Required payload boundaries:**
+
+| Boundary | Must carry |
+|---|---|
+| Capture → ingestion | Media reference, capture timestamp, device intrinsics/pose if available (and an explicit flag when not) |
+| Ingestion → perception | Frame identity, source offset, selection reason |
+| Perception → observation | One record per detected object per frame: label, detection confidence, mask reference, frame provenance |
+| Observation → fused object | Stable object ID, **the full list of contributing frames**, per-view measurements, fused dimensions, agreement across views |
+| Fused object → inventory item | Customer-facing label, room assignment, dimensions with named axes, volume with uncertainty, review state |
+| Inventory item → quote line | Volume contribution, access factors applied, resulting price component |
+
+Two requirements deserve emphasis. **Provenance is mandatory** — every fused object must name the frames it came from, because when a customer disputes an item, the answer is showing them the frames it was measured in. And **object identity must be stable across reprocessing**, since the customer amends an inventory that has already been shown to them.
+
+**`measurement_basis`.** Every inventory item carries one of three values, and it must survive unchanged from the item all the way to its quote line, because the surcharge contract in [§5c](#5c-volume--quote-contract) keys on it:
+
+- `measured` — dimensions came from direct observation with no prior substitution.
+- `prior_assisted` — one or more axes (typically the occluded depth axis) were filled from the class-priors table rather than observed directly.
+- `declared` — the line has no underlying detection at all: a customer-entered item, or a boxed-goods line seeded from storage-furniture counts and adjusted by the customer.
+
+**Boxed-goods lines are a distinct line type, not an object measurement.** They carry a box-equivalent count and the seed that produced it (which storage furniture and room counts contributed), not a set of dimensions — there is no OBB to report. See [§5c](#5c-volume--quote-contract) for how this line enters the quote.
+
+**Below-floor detections are evidence, not inventory.** Objects too small to measure reliably (see [§5b](#5b-confidence-and-human-review-rules)) do not become inventory lines and are never silently included in `total_visible_volume_m3`-style totals — but they aren't discarded either. They pass through the payload as density evidence (count and rough location) that feeds the boxed-goods seed: a cluttered kitchen counter is itself a signal that there are more boxes than an empty one.
+
+### 5b. Confidence and human-review rules
+
+The prototype attaches the same warning string to every measurement and lists failures under "Objects requiring human review" (`app.py:344-347`). That is a UI convention, not a policy. The MVP needs named states with defined transitions.
+
+Every inventory item resolves to exactly one of three states:
+
+- **Auto-accept** — flows into the quote without intervention.
+- **Customer-confirm** — surfaced in the step-3 review loop for the customer to verify, correct, or remove.
+- **Staff-escalate** — the booking cannot be auto-quoted; it enters the company queue with the reason attached.
+
+Signals that drive state, all of which must be recorded on the item rather than recomputed at display time:
+
+| Signal | Available today |
+|---|---|
+| Detection confidence | Yes — `Detection.score` |
+| Point count supporting the measurement | Yes — `ObjectMeasurement.point_count` |
+| Axis-aligned fallback fired | Yes — encoded in `warning` (`geometry.py:147`) |
+| **Shell ratio** — smallest OBB extent vs. class-expected depth | Yes, once axis semantics are fixed ([§3](#3-known-limitations-of-the-current-measurement)) — compares `dimensions_m` after `np.sort` (`geometry.py:150`) against the class-priors table; a sofa fitted at 0.2 m deep against an ~0.9 m expectation is a front-facing shell, not a real measurement |
+| **Border truncation** — mask touches an image edge | Yes — a check against `detection.mask`'s boundary rows/columns (`models.py:160-161`), no new inference required |
+| Dimensions implausible for the class (any axis, not just depth) | Partially — needs the class-priors table populated; the check itself is a comparison against `dimensions_m` |
+| Disagreement across views | No — needs multi-view fusion, deferred per [§4](#4-mvp-target-architecture) |
+
+**The interrupt rule: flag only implausibility, never mere imperfection.** `prior_assisted` alone — an occluded axis quietly filled from the priors table — does **not** trigger customer-confirm. Only a shell ratio, border truncation, or implausible dimension does. Every customer prompt is a chance to abandon the flow mid-capture, and low friction is this product's core advantage over a manual survey; a measurement that is merely *typical-but-unverified* is exactly what a human surveyor would also eyeball and accept. When a plausibility flag does fire, the customer sees a single proposed number to confirm ("we measured this sofa at about 2.1 m long — is that right?"), not a request to re-capture.
+
+Two rules are non-negotiable regardless of how the thresholds are eventually tuned. **A failed measurement is never silently dropped** — the current `measurement_errors` behaviour (`geometry.py:188-189`) becomes an escalation, not a log line, because an object that failed to measure is still an object that must be moved. And **the customer confirming an item does not clear a staff escalation**; the two review paths are independent, since the customer cannot assess whether a measurement is geometrically sound.
+
+### 5c. Volume → quote contract
+
+**The prototype produces no pricing at all, and this is deliberate rather than unfinished.** Presenting a simulated price on top of a single-view lower bound would attach a credible-looking number to a measurement known to be biased low.
+
+The contract this layer must satisfy:
+
+**Volume is an input, not the output.** The quote is a function of estimated volume, the access factors from intake (origin and destination floor, lift availability, parking distance), and company-specific pricing configuration. Access factors are labour multipliers and must apply independently of volume — carrying the same sofa to a fourth floor without a lift is not the same job as carrying it to the ground floor.
+
+**Quote from the upper bound of the estimate, once — never stack margin.** Priors ([§4](#4-mvp-target-architecture)) exist to produce a *typical* estimate per object; the quoting layer is the one place that adds conservatism on top, by pricing from the upper end of the resulting volume range rather than its midpoint. This is a hard constraint, not a suggestion: margin must be applied in exactly this one configurable place. If the priors table itself is padded "to be safe," and the quoting layer adds margin again, and truck sizing rounds up again, the stacked effect prices the company out of jobs it should win. Each layer states its own number honestly; only the quoting policy decides how much conservatism the customer-facing price carries.
+
+**The surcharge contract fires on declared quantities being wrong, not on measurement error.** These are different failures and this product can only stand behind one of them. If a scanned, `measured` or `prior_assisted` item turns out larger on moving day, that is the system's estimation error, and the company absorbs it — that's what the upper-bound margin above is for. If a `declared` item — a boxed-goods count or a manually-entered object the customer supplied — turns out wrong, the day-of surcharge applies, because the customer supplied that number, not the pipeline. "You told us 40 boxes and there were 70" is a defensible conversation with a customer; "our camera underestimated your sofa" is not, and would undermine the entire premise of a measured quote. This is exactly why `measurement_basis` ([§5a](#5a-inter-stage-data-schemas)) must reach the quote line unchanged — it is the field the surcharge policy branches on.
+
+**Boxed goods are a quote line with labour weighted separately from volume.** Forty boxes down four flights of stairs without a lift is a materially different job from one sofa of equal volume, even though the volume-based portion of the quote is identical — the boxed-goods line needs its own labour multiplier in the pricing configuration, not just its own volume figure. See [§4](#4-mvp-target-architecture) for how the box count itself is seeded and confirmed.
+
+**Containers are assumed to move empty; declared contents become their own boxed-goods lines.** A wardrobe or cabinet's *contents* are invisible to any camera angle by construction, so the volume estimate for the container itself assumes it travels emptied, and the customer separately declares what's inside as boxed goods. Flagging this as an assumption to validate against partner companies' actual practice, not a settled decision — see [Calibration](#calibration).
+
+**Truck recommendation is a separate function from price.** It depends on packed volume and on the largest single dimension — a wardrobe that fits the volume budget but not the door. It therefore requires the named-axis dimensions that §3 notes are currently discarded.
+
+**Quotes are versioned against the inventory that produced them.** When a customer amends the inventory, the previous quote is superseded, not mutated, so the company can see what was originally offered.
+
+### Calibration
+
+Every number introduced above — class-prior dimensions, box-count-per-storage-item ratios, and the upper-bound margin itself — is currently reasoned from general moving-industry rules of thumb, not measured data, because no multi-view fusion exists yet to compare against ground truth. Partner moving companies already hold the actual calibration set: historical job records pairing an initial estimate against the volume and labour a job actually took. Any of the figures in this document should be treated as a starting point to be overridden by that data as soon as it's available, not as a fixed specification.
+
+---
+
+## 6. Gap analysis
+
+| Capability | Today | MVP requirement | What has to change |
+|---|---|---|---|
+| **Input** | One prepared still image, ≤1280 px | Video or multi-photo walkthrough | Ingestion, keyframe selection, per-frame batching |
+| **Object discovery** | Customer-supplied class list; unlisted items invisible | Automatic enumeration of movable objects | Open-vocabulary detection; class list becomes a prior |
+| **Object identity** | None — each detection independent | One physical object = one inventory line | Cross-frame association; stable IDs surviving reprocessing |
+| **Room awareness** | None | Inventory grouped and labelled by room | Room segmentation from trajectory; customer-confirmed labels |
+| **Volume fidelity** | Single-view visible-surface lower bound, anisotropic error, no class priors | Defensible transport volume | Class-priors table for occluded-axis substitution (critical path); true multi-view fusion deferred until measured against outcomes |
+| **Dimensions** | Three unordered edge lengths | Named width / height / depth | Preserve axis semantics (`geometry.py:150`) — now blocking, since prior substitution and shell-ratio checks both need to know which extent is depth |
+| **Small items** | None — every detection measured and reported identically | Size floor below which items become density evidence, not inventory lines | Floor threshold; evidence feeds boxed-goods seed instead of being measured or discarded |
+| **Boxed goods** | No representation at all | Seeded box-equivalent line from detected storage + room count/type, customer-adjusted | Boxed-goods estimator ([§4](#4-mvp-target-architecture)); `declared` line type ([§5a](#5a-inter-stage-data-schemas)) |
+| **Latency** | ~3 min/image; models loaded and freed per stage | Interactive turnaround on a full walkthrough | Resident models on adequate GPU; batching; the 8 GB constraint no longer applies |
+| **Persistence** | None — in-memory, lost on rerun | Jobs, inventories, amendments, quotes all durable | Storage layer; serializable schemas per §5a |
+| **Review policy** | Blanket warning on every item; errors listed in an expander | Three named states, fired only by implausibility | Policy per §5b; shell-ratio and border-truncation checks; per-class plausibility ranges |
+| **Pricing** | None (intentionally) | Upper-bound quote + truck recommendation; surcharge scoped to declared-quantity error | Quote engine per §5c; company pricing configuration; `measurement_basis` propagated to the quote line |
+
+The rows are roughly ordered by dependency: identity and fusion unlock volume fidelity, which is what makes pricing defensible.
+
+---
+
+## Related documents
+
+- [`moveai_prototype/README.md`](moveai_prototype/README.md) — how to run the prototype and its demo path.
+- [`demo_images_100/README.md`](demo_images_100/README.md), [`real_world_samples/README.md`](real_world_samples/README.md) — sample dataset provenance and licensing.

@@ -4,6 +4,8 @@ Interactive partial prototype for Presentation 2:
 
 `language + room image → Grounding DINO → SAM 2 → Depth Pro → Open3D OBB`
 
+This file covers how to run the prototype. For the architecture, design rationale, and how this fits the wider product, see [`../DESIGN.md`](../DESIGN.md).
+
 ## What is implemented
 
 - **Grounding DINO:** detects user-specified furniture categories from language.
