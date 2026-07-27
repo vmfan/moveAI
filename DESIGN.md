@@ -75,7 +75,7 @@ Filtering happens in three passes, each for a distinct failure mode:
 | 5–95% quantile band within the mask | Removes background bleed where the mask spills past the object edge |
 | Statistical outlier removal (20 neighbours, 2.0 σ) | Removes speckle that would stretch the fitted box |
 
-The cloud is subsampled to at most 12,000 points, then `get_minimal_oriented_bounding_box(robust=True)` fits the box. If that fails, the code falls back to an axis-aligned box and records the substitution in the measurement's `warning` string (`geometry.py:143-147`) — the fallback is never silent.
+The cloud is subsampled to at most 12,000 points, then `get_minimal_oriented_bounding_box(robust=True)` fits the box. If that fails, the code falls back to an axis-aligned box and records the substitution in the measurement's `warning` string (`geometry.py:172-180`) — the fallback is never silent.
 
 Volume is the product of the box extents.
 
@@ -87,7 +87,7 @@ Volume is the product of the box extents.
 
 This is an intentional concession to the 8 GB unified-memory machine the prototype was built on — the three models cannot coexist there. It is *also* why a full run takes roughly three minutes, most of it spent loading weights rather than computing. It is a known tradeoff, correct for a demo and the first thing that must change for the MVP.
 
-**Per-object error isolation.** `measure_all` (`geometry.py:168`) catches per-object failures and collects them into `measurement_errors` rather than aborting. One un-measurable object degrades the inventory; it does not destroy the run.
+**Per-object error isolation.** `measure_all` (`geometry.py:204`) catches per-object failures and collects them into `measurement_errors` rather than aborting. One un-measurable object degrades the inventory; it does not destroy the run.
 
 **No network at inference.** All Hugging Face loads pass `local_files_only=True`; the Depth Pro checkpoint is a local file whose absence raises a clear `FileNotFoundError`.
 
@@ -95,11 +95,11 @@ This is an intentional concession to the 8 GB unified-memory machine the prototy
 
 ## 3. Known limitations of the current measurement
 
-**The single-view error is anisotropic, not uniform.** The fitted box contains only surfaces visible from one camera position, but the error this introduces is not spread evenly across the three axes. A frontal photo measures an object's *frontal* extents — length and height — reasonably well, because those edges are directly visible. It measures *depth* badly, because the far side, underside, and any occluded surface are never reconstructed: a sofa shot head-on can fit a box barely 0.2 m deep against a true depth near 0.9 m. Every measurement therefore carries a standing warning (`geometry.py:139`), and the number is not a quote-ready transport volume.
+**The single-view error is anisotropic, not uniform.** The fitted box contains only surfaces visible from one camera position, but the error this introduces is not spread evenly across the three axes. A frontal photo measures an object's *frontal* extents — length and height — reasonably well, because those edges are directly visible. It measures *depth* badly, because the far side, underside, and any occluded surface are never reconstructed: a sofa shot head-on can fit a box barely 0.2 m deep against a true depth near 0.9 m. Every measurement therefore carries a standing warning (`geometry.py:168`), and the number is not a quote-ready transport volume.
 
 This matters beyond "the number is wrong": depth is also the axis with the *least* variation across a furniture class (sofas run roughly 0.85–1.0 m deep regardless of style, while length ranges 1.5–3.5 m). That means the specific axis a single photo measures worst is the one a class-specific prior can best replace — see [§4](#4-mvp-target-architecture) and [§5b](#5b-confidence-and-human-review-rules).
 
-**Axis semantics are discarded.** `dimensions_m` sorts the three extents descending (`geometry.py:150`), so the output records three edge lengths but not which is width, height, or depth — the UI honestly labels them "OBB edge 1/2/3" (`app.py:165-167`). This was already insufficient for doorway, lift, and stairwell clearance checks; it now also blocks the anisotropic-error handling above, since substituting a prior for "the occluded axis" first requires knowing which extent that is.
+**~~Axis semantics are discarded.~~ Fixed.** `ObjectMeasurement` used to sort the three extents descending, discarding which was width, height, or depth. It now exposes named `width_m`/`height_m`/`depth_m` fields, classified by each fitted box axis's alignment with the camera frame (depth ≈ camera-forward, height ≈ up) — see `IMPLEMENTATION_ROADMAP.md` Build 1. This unblocks the anisotropic-error handling above (a prior can now target `depth_m` specifically) and the shell-ratio/truck-recommendation reasoning in §5b/§5c, which both depend on knowing which extent is which.
 
 **Total volume is a naive sum.** `total_visible_volume_m3` (`pipeline.py:36`) adds per-object box volumes with no packing factor, no void allowance, no handling of overlapping or nested boxes, and no disassembly assumptions. Real transport volume is not the sum of bounding boxes.
 
@@ -159,7 +159,7 @@ These are the invariants that must hold across both the current pipeline and eve
 
 ### 5a. Inter-stage data schemas
 
-Today the pipeline passes in-memory dataclasses holding raw NumPy arrays — `Detection` (`models.py:29`), `ObjectMeasurement` (`geometry.py:30`), `PipelineResult` (`pipeline.py:26`) — and the only serialized artifact is the flattened JSON inventory built by `result_rows` (`app.py:156`). That is sufficient for a single-process demo and insufficient for a system where frames are processed independently, possibly out of order, and results are stored and revisited.
+Today the pipeline passes in-memory dataclasses holding raw NumPy arrays — `Detection` (`models.py:29`), `ObjectMeasurement` (`geometry.py:30`), `PipelineResult` (`pipeline.py:26`) — and the only serialized artifact is the flattened JSON inventory built by `result_rows` (`app.py:60`). That is sufficient for a single-process demo and insufficient for a system where frames are processed independently, possibly out of order, and results are stored and revisited.
 
 **Global conventions, stated once and enforced everywhere:**
 
@@ -192,7 +192,7 @@ Two requirements deserve emphasis. **Provenance is mandatory** — every fused o
 
 ### 5b. Confidence and human-review rules
 
-The prototype attaches the same warning string to every measurement and lists failures under "Objects requiring human review" (`app.py:344-347`). That is a UI convention, not a policy. The MVP needs named states with defined transitions.
+The prototype attaches the same warning string to every measurement and lists failures under "Objects requiring human review" (`app.py:234-236`). That is a UI convention, not a policy. The MVP needs named states with defined transitions.
 
 Every inventory item resolves to exactly one of three states:
 
@@ -206,15 +206,15 @@ Signals that drive state, all of which must be recorded on the item rather than 
 |---|---|
 | Detection confidence | Yes — `Detection.score` |
 | Point count supporting the measurement | Yes — `ObjectMeasurement.point_count` |
-| Axis-aligned fallback fired | Yes — encoded in `warning` (`geometry.py:147`) |
-| **Shell ratio** — smallest OBB extent vs. class-expected depth | Yes, once axis semantics are fixed ([§3](#3-known-limitations-of-the-current-measurement)) — compares `dimensions_m` after `np.sort` (`geometry.py:150`) against the class-priors table; a sofa fitted at 0.2 m deep against an ~0.9 m expectation is a front-facing shell, not a real measurement |
+| Axis-aligned fallback fired | Yes — `ObjectMeasurement.used_axis_aligned_fallback` (`geometry.py:30`), a direct boolean since Build 1, no longer parsed from `warning` text |
+| **Shell ratio** — `depth_m` vs. class-expected depth | Yes — compares `ObjectMeasurement.depth_m` (named directly since Build 1's axis-semantics fix, `geometry.py:108-131`) against the class-priors table; a sofa fitted at 0.2 m deep against an ~0.9 m expectation is a front-facing shell, not a real measurement |
 | **Border truncation** — mask touches an image edge | Yes — a check against `detection.mask`'s boundary rows/columns (`models.py:160-161`), no new inference required |
-| Dimensions implausible for the class (any axis, not just depth) | Partially — needs the class-priors table populated; the check itself is a comparison against `dimensions_m` |
+| Dimensions implausible for the class (any axis, not just depth) | Partially — needs the class-priors table populated; the check itself is a comparison against `width_m`/`height_m`/`depth_m` |
 | Disagreement across views | No — needs multi-view fusion, deferred per [§4](#4-mvp-target-architecture) |
 
 **The interrupt rule: flag only implausibility, never mere imperfection.** `prior_assisted` alone — an occluded axis quietly filled from the priors table — does **not** trigger customer-confirm. Only a shell ratio, border truncation, or implausible dimension does. Every customer prompt is a chance to abandon the flow mid-capture, and low friction is this product's core advantage over a manual survey; a measurement that is merely *typical-but-unverified* is exactly what a human surveyor would also eyeball and accept. When a plausibility flag does fire, the customer sees a single proposed number to confirm ("we measured this sofa at about 2.1 m long — is that right?"), not a request to re-capture.
 
-Two rules are non-negotiable regardless of how the thresholds are eventually tuned. **A failed measurement is never silently dropped** — the current `measurement_errors` behaviour (`geometry.py:188-189`) becomes an escalation, not a log line, because an object that failed to measure is still an object that must be moved. And **the customer confirming an item does not clear a staff escalation**; the two review paths are independent, since the customer cannot assess whether a measurement is geometrically sound.
+Two rules are non-negotiable regardless of how the thresholds are eventually tuned. **A failed measurement is never silently dropped** — the current `measurement_errors` behaviour (`geometry.py:223-224`) becomes an escalation, not a log line, because an object that failed to measure is still an object that must be moved. And **the customer confirming an item does not clear a staff escalation**; the two review paths are independent, since the customer cannot assess whether a measurement is geometrically sound.
 
 ### 5c. Volume → quote contract
 
@@ -251,7 +251,7 @@ Every number introduced above — class-prior dimensions, box-count-per-storage-
 | **Object identity** | None — each detection independent | One physical object = one inventory line | Cross-frame association; stable IDs surviving reprocessing |
 | **Room awareness** | None | Inventory grouped and labelled by room | Room segmentation from trajectory; customer-confirmed labels |
 | **Volume fidelity** | Single-view visible-surface lower bound, anisotropic error, no class priors | Defensible transport volume | Class-priors table for occluded-axis substitution (critical path); true multi-view fusion deferred until measured against outcomes |
-| **Dimensions** | Three unordered edge lengths | Named width / height / depth | Preserve axis semantics (`geometry.py:150`) — now blocking, since prior substitution and shell-ratio checks both need to know which extent is depth |
+| **Dimensions** | ~~Three unordered edge lengths~~ Named `width_m`/`height_m`/`depth_m` — **done, `IMPLEMENTATION_ROADMAP.md` Build 1** | Named width / height / depth | Done |
 | **Small items** | None — every detection measured and reported identically | Size floor below which items become density evidence, not inventory lines | Floor threshold; evidence feeds boxed-goods seed instead of being measured or discarded |
 | **Boxed goods** | No representation at all | Seeded box-equivalent line from detected storage + room count/type, customer-adjusted | Boxed-goods estimator ([§4](#4-mvp-target-architecture)); `declared` line type ([§5a](#5a-inter-stage-data-schemas)) |
 | **Latency** | ~3 min/image; models loaded and freed per stage | Interactive turnaround on a full walkthrough | Resident models on adequate GPU; batching; the 8 GB constraint no longer applies |
