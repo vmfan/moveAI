@@ -13,7 +13,7 @@ This file covers how to run the prototype. For the architecture, design rational
 - **Streamlit UI:** displays masks, depth, itemized dimensions, downloadable inventory, and interactive point clouds.
 - **Human control:** users can change class prompts and thresholds; low-confidence or failed measurements are explicitly surfaced for review.
 
-All four AI/geometry stages are live. Pricing is implemented as a standalone engine (`pricing.py`, `boxed_goods.py`, `priors.py`; see `../IMPLEMENTATION_ROADMAP.md` Build 3). The app is now two pages: **Intake** (job spine — contact, addresses, access factors) and the main **Volume Lab** page, which persists measured items to that job (`../IMPLEMENTATION_ROADMAP.md` Build 4). Wiring pricing/quote/booking into the UI lands with Builds 5–7.
+All four AI/geometry stages are live. Pricing is implemented as a standalone engine (`pricing.py`, `boxed_goods.py`, `priors.py`; see `../IMPLEMENTATION_ROADMAP.md` Build 3). The app is now four pages: **Intake** (job spine — contact, addresses, access factors), the main **Volume Lab** page, which persists measured items to that job (`../IMPLEMENTATION_ROADMAP.md` Build 4), **Inventory Review** (confirm/correct measured items, adjust the boxed-goods estimate, add missed items — Build 5), and **Quote** (priced estimate, truck recommendation, versioned quote history — Build 6). Wiring booking into the UI lands with Build 7.
 
 ## Run the app
 
@@ -29,7 +29,7 @@ The current development server runs at:
 http://127.0.0.1:8505
 ```
 
-The sidebar page navigation lists **Intake** and the main Volume Lab page. Start at Intake to create a job (contact details, origin/destination addresses, floor/lift/parking access factors, room count); the active job persists across pages via `st.session_state` and is mirrored into `st.query_params` so a browser refresh doesn't lose it. Running the pipeline on the Volume Lab page with a job active writes each measured object into `job.db`'s `inventory_item` table (see `db.py`), tagged with the **Room** label from the sidebar; a failed measurement is written as a `staff_escalate` row rather than being dropped, and re-running the same photo replaces its prior rows instead of duplicating them. With no active job, the Volume Lab page behaves exactly as before (standalone mode, nothing is saved).
+The sidebar page navigation lists **Intake**, the main Volume Lab page, **Inventory Review**, and **Quote**. Start at Intake to create a job (contact details, origin/destination addresses, floor/lift/parking access factors, room count); the active job persists across pages via `st.session_state` and is mirrored into `st.query_params` so a browser refresh doesn't lose it. Running the pipeline on the Volume Lab page with a job active writes each measured object into `job.db`'s `inventory_item` table (see `db.py`), tagged with the **Room** label from the sidebar; a failed measurement is written as a `staff_escalate` row rather than being dropped, and re-running the same photo replaces its prior rows instead of duplicating them. Inventory Review lets the customer confirm or correct flagged items, adjust the boxed-goods count, and add anything missed. Quote builds a priced estimate from the confirmed inventory, auto-persisting the first version and offering an explicit **Regenerate quote** once the inventory has changed — quotes are versioned by insertion, never mutated. With no active job, the Volume Lab page behaves exactly as before (standalone mode, nothing is saved).
 
 The first complete analysis takes approximately three minutes on the current 8 GB Apple-Silicon Mac. Depth Pro is the dominant stage.
 
@@ -51,6 +51,8 @@ Persistence-layer checks (no model weights needed):
 .venv/bin/python db_smoke_test.py
 .venv/bin/python pricing_smoke_test.py
 .venv/bin/python job_flow_smoke_test.py
+.venv/bin/python inventory_review_smoke_test.py
+.venv/bin/python quote_smoke_test.py
 ```
 
 ## Model files
