@@ -218,7 +218,7 @@ Two rules are non-negotiable regardless of how the thresholds are eventually tun
 
 ### 5c. Volume → quote contract
 
-**The prototype produces no pricing at all, and this is deliberate rather than unfinished.** Presenting a simulated price on top of a single-view lower bound would attach a credible-looking number to a measurement known to be biased low.
+**The prototype originally produced no pricing at all, and that was deliberate rather than unfinished** — presenting a simulated price on top of a single-view lower bound would have attached a credible-looking number to a measurement known to be biased low. The pricing engine (`moveai_prototype/pricing.py`, `boxed_goods.py`, `priors.py` — see `IMPLEMENTATION_ROADMAP.md` Build 3) now exists and satisfies the contract below, seeded with Hong Kong market research rather than invented figures — see Build 3's roadmap notes for sources.
 
 The contract this layer must satisfy:
 
@@ -257,7 +257,7 @@ Every number introduced above — class-prior dimensions, box-count-per-storage-
 | **Latency** | ~3 min/image; models loaded and freed per stage | Interactive turnaround on a full walkthrough | Resident models on adequate GPU; batching; the 8 GB constraint no longer applies |
 | **Persistence** | None — in-memory, lost on rerun | Jobs, inventories, amendments, quotes all durable | Storage layer; serializable schemas per §5a |
 | **Review policy** | Blanket warning on every item; errors listed in an expander | Three named states, fired only by implausibility | Policy per §5b; shell-ratio and border-truncation checks; per-class plausibility ranges |
-| **Pricing** | None (intentionally) | Upper-bound quote + truck recommendation; surcharge scoped to declared-quantity error | Quote engine per §5c; company pricing configuration; `measurement_basis` propagated to the quote line |
+| **Pricing** | ~~None (intentionally)~~ Engine implemented — **done, `IMPLEMENTATION_ROADMAP.md` Build 3** | Upper-bound quote + truck recommendation; surcharge scoped to declared-quantity error | Wiring into the UI (Builds 4–7) |
 
 The rows are roughly ordered by dependency: identity and fusion unlock volume fidelity, which is what makes pricing defensible.
 

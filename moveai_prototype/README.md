@@ -13,7 +13,7 @@ This file covers how to run the prototype. For the architecture, design rational
 - **Streamlit UI:** displays masks, depth, itemized dimensions, downloadable inventory, and interactive point clouds.
 - **Human control:** users can change class prompts and thresholds; low-confidence or failed measurements are explicitly surfaced for review.
 
-All four AI/geometry stages are live. Pricing is intentionally excluded rather than simulated.
+All four AI/geometry stages are live. Pricing is implemented as a standalone engine (`pricing.py`, `boxed_goods.py`, `priors.py`; see `../IMPLEMENTATION_ROADMAP.md` Build 3) but not yet wired into this Streamlit app — that lands with Builds 4–7. Run `.venv/bin/python pricing_smoke_test.py` to verify it.
 
 ## Run the app
 

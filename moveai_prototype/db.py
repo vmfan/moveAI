@@ -9,6 +9,18 @@ expects these to be overridden by partner-company job records once available.
 Margin is applied in exactly one place (`pricing_config.volume_margin_fraction`,
 consumed by Build 3's `upper_bound_volume_m3()`); no other layer in this schema
 may add a second margin, per `DESIGN.md` SS5c.
+
+`floor_multiplier_per_level` and the general price level were cross-checked
+against Hong Kong market research for Build 3 (pricing.py): a Consumer
+Council survey of 20 HK removal companies found stair/no-lift charges of
+15-20% of the total per floor (one floor = 15-20 steps), which set
+`floor_multiplier_per_level = 0.15` (bottom of the surveyed range, kept
+conservative pending real calibration data). `base_callout_fee` and
+`price_per_m3` were left unchanged: they price the Consumer Council's
+worked standard case (~18 m3) at ~HKD 7,100 before access, inside the
+survey's HKD 8,000-12,000 mid-size-move band. No surveyed HK company
+itemises a parking-distance surcharge (see `pricing.FREE_CARRY_DISTANCE_M`),
+so `parking_multiplier_per_10m` only bites past that free threshold.
 """
 
 from __future__ import annotations
@@ -47,7 +59,7 @@ _DEFAULT_PRICING_CONFIG = {
     "price_per_m3": 350.0,
     "minimum_charge": 1500.0,
     "volume_margin_fraction": 0.15,
-    "floor_multiplier_per_level": 0.08,
+    "floor_multiplier_per_level": 0.15,
     "lift_multiplier": 1.05,
     "parking_multiplier_per_10m": 0.03,
     "max_access_multiplier": 2.0,
