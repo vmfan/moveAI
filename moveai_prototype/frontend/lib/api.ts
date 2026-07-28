@@ -60,7 +60,13 @@ export async function saveIntake(jobId: string, fields: Intake): Promise<Intake>
 async function throwOnError(res: Response, label: string): Promise<Response> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(typeof body.detail === "string" ? body.detail : `${label} failed: ${res.status}`);
+    let message = `${label} failed: ${res.status}`;
+    if (typeof body.detail === "string") {
+      message = body.detail;
+    } else if (Array.isArray(body.detail)) {
+      message = body.detail.join(" ");
+    }
+    throw new Error(message);
   }
   return res;
 }
@@ -262,5 +268,172 @@ export async function addDeclaredItem(
     body: JSON.stringify(fields),
   });
   await throwOnError(res, "add declared item");
+  return res.json();
+}
+
+// -- Quote (Build 6/8/12) --------------------------------------------------
+
+export type QuoteLine = {
+  inventory_item_id: number;
+  measurement_basis: "measured" | "prior_assisted" | "declared";
+  raw_volume_m3: number;
+  volume_m3: number;
+  price_component: number;
+};
+
+export type Quote = {
+  lines: QuoteLine[];
+  total_volume_m3: number;
+  upper_bound_volume_m3: number;
+  volume_margin_fraction: number;
+  access_multiplier: number;
+  total_price: number;
+  recommended_truck: string | null;
+  escalated_item_ids: number[];
+  unmeasured_item_ids: number[];
+};
+
+export type QuoteViewRow = {
+  inventory_item_id: number;
+  label: string;
+  room_label: string | null;
+  measurement_basis: "measured" | "prior_assisted" | "declared";
+  raw_volume_m3: number;
+  volume_m3: number;
+  price_component: number;
+  surcharge_eligible: boolean;
+};
+
+export type QuoteResponse = {
+  quote: Quote;
+  version: number;
+  stale: boolean;
+  lines: QuoteViewRow[];
+  staff_review_reasons: string[];
+};
+
+export type QuoteVersion = {
+  id: number;
+  job_id: number;
+  version: number;
+  pricing_config_id: number;
+  total_volume_m3: number;
+  upper_bound_volume_m3: number;
+  volume_margin_fraction: number;
+  access_multiplier: number;
+  total_price: number;
+  recommended_truck: string | null;
+  is_superseded: number;
+  created_at: string;
+};
+
+export async function getQuote(jobId: string): Promise<QuoteResponse> {
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}/quote`, { cache: "no-store" });
+  await throwOnError(res, "GET quote");
+  return res.json();
+}
+
+export async function regenerateQuote(jobId: string): Promise<QuoteResponse> {
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}/quote/regenerate`, { method: "POST" });
+  await throwOnError(res, "regenerate quote");
+  return res.json();
+}
+
+export async function getQuoteVersions(jobId: string): Promise<QuoteVersion[]> {
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}/quote/versions`, { cache: "no-store" });
+  await throwOnError(res, "GET quote versions");
+  return res.json();
+}
+
+// -- Booking (Build 7/8/12) -------------------------------------------------
+
+export type BookingStatus =
+  | "pending_staff_review"
+  | "confirmed"
+  | "needs_customer_clarification"
+  | "cancelled";
+
+export type Booking = {
+  id: number;
+  job_id: number;
+  quote_id: number;
+  status: BookingStatus;
+  customer_note: string | null;
+  staff_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BookingStatusResponse = {
+  booking: Booking | null;
+  blockers: string[];
+};
+
+export async function getBooking(jobId: string): Promise<BookingStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}/booking`, { cache: "no-store" });
+  await throwOnError(res, "GET booking");
+  return res.json();
+}
+
+export async function submitBooking(
+  jobId: string,
+  customerNote?: string | null,
+): Promise<{ booking: Booking; created: boolean }> {
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}/booking/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ customer_note: customerNote ?? null }),
+  });
+  await throwOnError(res, "submit booking");
+  return res.json();
+}
+
+export async function resubmitBooking(
+  jobId: string,
+  customerNote?: string | null,
+): Promise<Booking> {
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}/booking/resubmit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ customer_note: customerNote ?? null }),
+  });
+  await throwOnError(res, "resubmit booking");
+  return res.json();
+}
+
+// -- Company Console (Build 7/8/12) -----------------------------------------
+
+export type ConsoleBooking = Booking & {
+  job_status: string;
+  total_price: number;
+  recommended_truck: string | null;
+};
+
+export type ConsoleBookingRow = {
+  booking: ConsoleBooking;
+  intake: Intake | null;
+  reasons: string[];
+  pinned_quote_superseded: boolean;
+};
+
+export async function listConsoleBookings(status?: string | null): Promise<ConsoleBookingRow[]> {
+  const url = new URL(`${API_BASE}/api/console/bookings`);
+  if (status) url.searchParams.set("status", status);
+  const res = await fetch(url, { cache: "no-store" });
+  await throwOnError(res, "GET console bookings");
+  return res.json();
+}
+
+export async function decideBooking(
+  bookingId: number,
+  status: BookingStatus,
+  staffNote?: string | null,
+): Promise<Booking> {
+  const res = await fetch(`${API_BASE}/api/console/bookings/${bookingId}/decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, staff_note: staffNote ?? null }),
+  });
+  await throwOnError(res, "decide booking");
   return res.json();
 }

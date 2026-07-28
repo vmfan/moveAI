@@ -39,7 +39,14 @@ export async function requireStep(jobId: string, step: Step): Promise<Job> {
 
   const allowed = furthestAllowedIndex(job.status);
   const wanted = STEPS.indexOf(step);
-  if (wanted > allowed) {
+  // Quote is computed (and its status transition persisted) on first visit rather than
+  // by a prior explicit action, so inventory_review must be allowed one hop ahead to it.
+  const bootstrappingQuote = step === "quote" && job.status === "inventory_review";
+  // job.status only becomes "booked" via a staff console action (booking_sync.py), never
+  // from the customer's own booking-request submission, so "quoted" must stay allowed to
+  // reach booking indefinitely -- not just as a one-time bootstrap.
+  const bookingWhileQuoted = step === "booking" && job.status === "quoted";
+  if (wanted > allowed && !bootstrappingQuote && !bookingWhileQuoted) {
     redirect(`/jobs/${jobId}/${STEPS[allowed]}`);
   }
   return job;
