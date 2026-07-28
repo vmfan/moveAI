@@ -58,3 +58,11 @@ class ResubmitIn(BaseModel):
 class StaffDecisionIn(BaseModel):
     status: str
     staff_note: str | None = None
+
+
+class CaptureIn(BaseModel):
+    image_name: str
+    furniture_classes: list[str] | None = None
+    room_label: str | None = None
+    box_threshold: float | None = None
+    max_detections: int | None = None

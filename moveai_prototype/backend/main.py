@@ -1,9 +1,8 @@
-"""FastAPI backend skeleton wrapping the existing intake/inventory/quote/
-booking/console business logic (IMPLEMENTATION_ROADMAP.md Build 8).
-
-No AI pipeline yet (Build 10) and no Next.js gating (Build 9) -- this is
-just the existing `db.py`/`inventory_sync.py`/`quote_sync.py`/
-`booking_sync.py`/`pricing.py` logic reachable over HTTP, unchanged.
+"""FastAPI backend wrapping the existing intake/inventory/quote/booking/
+console business logic (IMPLEMENTATION_ROADMAP.md Build 8), plus the AI
+pipeline behind `/api/jobs/{job_id}/capture` (Build 10) -- the existing
+`db.py`/`inventory_sync.py`/`quote_sync.py`/`booking_sync.py`/`pricing.py`/
+`pipeline.py` logic is reused unchanged, only wired to HTTP.
 
 Run from `moveai_prototype/`:
     uvicorn backend.main:app --reload
@@ -23,7 +22,15 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 import db  # noqa: E402
-from backend.routers import booking, console, intake, inventory, jobs, quote  # noqa: E402
+from backend.routers import (  # noqa: E402
+    booking,
+    capture,
+    console,
+    intake,
+    inventory,
+    jobs,
+    quote,
+)
 
 
 @asynccontextmanager
@@ -51,3 +58,4 @@ app.include_router(inventory.router)
 app.include_router(quote.router)
 app.include_router(booking.router)
 app.include_router(console.router)
+app.include_router(capture.router)
