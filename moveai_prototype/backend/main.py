@@ -20,6 +20,7 @@ if str(APP_DIR) not in sys.path:
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 import db  # noqa: E402
 from backend.routers import (  # noqa: E402
@@ -30,7 +31,9 @@ from backend.routers import (  # noqa: E402
     inventory,
     jobs,
     quote,
+    samples,
 )
+from backend.routers.samples import SAMPLE_DIR  # noqa: E402
 
 
 @asynccontextmanager
@@ -59,3 +62,5 @@ app.include_router(quote.router)
 app.include_router(booking.router)
 app.include_router(console.router)
 app.include_router(capture.router)
+app.include_router(samples.router)
+app.mount("/static/samples", StaticFiles(directory=SAMPLE_DIR), name="samples")

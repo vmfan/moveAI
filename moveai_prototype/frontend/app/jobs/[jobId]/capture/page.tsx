@@ -1,17 +1,19 @@
 import { requireStep } from "@/lib/gating";
+import { getCapturePreview, listSamples } from "@/lib/api";
+import { CaptureClient } from "./CaptureClient";
 
 export default async function CapturePage(props: PageProps<"/jobs/[jobId]/capture">) {
   const { jobId } = await props.params;
-  const job = await requireStep(jobId, "capture");
+  await requireStep(jobId, "capture");
+  const [samples, preview] = await Promise.all([listSamples(), getCapturePreview(jobId)]);
 
   return (
     <div>
       <h1 className="text-xl font-semibold text-zinc-900">Capture</h1>
-      <p className="mt-2 text-sm text-zinc-600">
-        Job status: <code>{job.status}</code>. Photo/video capture and the AI pipeline are wired
-        up in Build 10-11 — this page exists so Build 9 has a real gated destination to prove the
-        server-side redirect against.
+      <p className="mt-1 text-sm text-zinc-600">
+        Pick a photo of the room and we&apos;ll detect and measure the furniture in it.
       </p>
+      <CaptureClient jobId={jobId} samples={samples} hasExistingCapture={preview !== null} />
     </div>
   );
 }
