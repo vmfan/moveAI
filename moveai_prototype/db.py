@@ -687,27 +687,48 @@ def update_booking_status(
     status: str,
     *,
     staff_note: str | None = None,
+    customer_note: str | None = None,
 ) -> None:
     if status not in BOOKING_STATUSES:
         raise ValueError(f"Unknown booking status: {status!r}")
     conn.execute(
-        "UPDATE booking SET status = ?, staff_note = COALESCE(?, staff_note), updated_at = ? WHERE id = ?",
-        (status, staff_note, _now(), booking_id),
+        """
+        UPDATE booking
+        SET status = ?,
+            staff_note = COALESCE(?, staff_note),
+            customer_note = COALESCE(?, customer_note),
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (status, staff_note, customer_note, _now(), booking_id),
     )
     conn.commit()
 
 
-def list_bookings(conn: sqlite3.Connection, status: str | None = None) -> list[dict]:
+def get_booking(conn: sqlite3.Connection, booking_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM booking WHERE id = ?", (booking_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_bookings(
+    conn: sqlite3.Connection, status: str | None = None, *, job_id: int | None = None
+) -> list[dict]:
     query = """
         SELECT booking.*, job.status AS job_status, quote.total_price, quote.recommended_truck
         FROM booking
         JOIN job ON job.id = booking.job_id
         JOIN quote ON quote.id = booking.quote_id
     """
-    params: tuple = ()
+    conditions = []
+    params: list = []
     if status is not None:
-        query += " WHERE booking.status = ?"
-        params = (status,)
-    query += " ORDER BY booking.created_at DESC"
-    rows = conn.execute(query, params).fetchall()
+        conditions.append("booking.status = ?")
+        params.append(status)
+    if job_id is not None:
+        conditions.append("booking.job_id = ?")
+        params.append(job_id)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY booking.created_at DESC, booking.id DESC"
+    rows = conn.execute(query, tuple(params)).fetchall()
     return [dict(row) for row in rows]

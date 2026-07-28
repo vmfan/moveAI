@@ -224,3 +224,10 @@ with st.expander("Quote version history"):
             f"v{q['version']} ({status}) — {currency} {q['total_price']:,.0f} — "
             f"{q['created_at']}"
         )
+
+st.divider()
+st.subheader("Ready to move forward?")
+try:
+    st.page_link("pages/4_Booking.py", label="Request a booking", icon="📦")
+except Exception:
+    st.caption("Use the page navigation above to request a booking.")
