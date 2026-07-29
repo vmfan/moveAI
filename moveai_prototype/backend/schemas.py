@@ -61,7 +61,7 @@ class StaffDecisionIn(BaseModel):
 
 
 class CaptureIn(BaseModel):
-    image_name: str
+    image_names: list[str]
     furniture_classes: list[str] | None = None
     room_label: str | None = None
     box_threshold: float | None = None

@@ -85,23 +85,33 @@ export async function listSamples(): Promise<Sample[]> {
 // -- Capture (Build 10/11) ------------------------------------------------
 
 export type CaptureRequest = {
-  image_name: string;
+  image_names: string[];
   furniture_classes?: string[] | null;
   room_label?: string | null;
   box_threshold?: number | null;
   max_detections?: number | null;
 };
 
-export type CaptureResult = {
+export type CaptureImageSummary = {
   measured_item_ids: number[];
   escalated_item_ids: number[];
   timings_s: Record<string, number>;
   total_visible_volume_m3: number;
+};
+
+export type CaptureDuplicateGroup = { kept_item_id: number; removed_item_ids: number[] };
+
+export type CaptureResult = {
+  images: Record<string, CaptureImageSummary>;
+  duplicates_removed: CaptureDuplicateGroup[];
+  room_labels_assigned: Record<string, string>;
+  dedup_error: string | null;
   artifacts: {
-    overlay_url: string;
-    depth_url: string;
+    overlay_url_template: string;
+    depth_url_template: string;
     inventory_url: string;
     point_cloud_url_template: string;
+    images_url: string;
   };
 };
 
@@ -115,12 +125,19 @@ export async function runCapture(jobId: string, body: CaptureRequest): Promise<C
   return res.json();
 }
 
-export function overlayUrl(jobId: string): string {
-  return `${API_BASE}/api/jobs/${jobId}/capture/overlay.png`;
+export async function listCaptureImages(jobId: string): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}/capture/images`, { cache: "no-store" });
+  await throwOnError(res, "GET capture images");
+  const body: { image_names: string[] } = await res.json();
+  return body.image_names;
 }
 
-export function depthUrl(jobId: string): string {
-  return `${API_BASE}/api/jobs/${jobId}/capture/depth.png`;
+export function overlayUrl(jobId: string, imageName: string): string {
+  return `${API_BASE}/api/jobs/${jobId}/capture/overlay.png?image_name=${encodeURIComponent(imageName)}`;
+}
+
+export function depthUrl(jobId: string, imageName: string): string {
+  return `${API_BASE}/api/jobs/${jobId}/capture/depth.png?image_name=${encodeURIComponent(imageName)}`;
 }
 
 export type CapturePreviewItem = {
@@ -136,11 +153,18 @@ export type CapturePreviewItem = {
   used_axis_aligned_fallback: boolean;
   mask_touches_border: boolean;
   warning: string | null;
+  source_image_name: string;
 };
 
 export type CapturePreview = {
   items: CapturePreviewItem[];
-  errors: { index: number; label: string; detection_confidence: number; message: string }[];
+  errors: {
+    index: number;
+    label: string;
+    detection_confidence: number;
+    message: string;
+    source_image_name: string;
+  }[];
   total_visible_volume_m3: number;
   timings_s: Record<string, number>;
 };
@@ -152,12 +176,16 @@ export async function getCapturePreview(jobId: string): Promise<CapturePreview |
   return res.json();
 }
 
-export function pointCloudUrl(jobId: string, itemIndex: number): string {
-  return `${API_BASE}/api/jobs/${jobId}/capture/points/${itemIndex}`;
+export function pointCloudUrl(jobId: string, imageName: string, itemIndex: number): string {
+  return `${API_BASE}/api/jobs/${jobId}/capture/points/${itemIndex}?image_name=${encodeURIComponent(imageName)}`;
 }
 
-export async function getPointCloud(jobId: string, itemIndex: number): Promise<unknown | null> {
-  const res = await fetch(pointCloudUrl(jobId, itemIndex), { cache: "no-store" });
+export async function getPointCloud(
+  jobId: string,
+  imageName: string,
+  itemIndex: number,
+): Promise<unknown | null> {
+  const res = await fetch(pointCloudUrl(jobId, imageName, itemIndex), { cache: "no-store" });
   if (res.status === 404) return null;
   await throwOnError(res, "GET point cloud");
   return res.json();

@@ -6,6 +6,7 @@ import {
   depthUrl,
   getCapturePreview,
   getPointCloud,
+  listCaptureImages,
   overlayUrl,
   type CapturePreview,
 } from "@/lib/api";
@@ -24,11 +25,18 @@ const TAB_LABELS: Record<Tab, string> = {
 export function PipelineOutputTabs({ jobId }: { jobId: string }) {
   const [tab, setTab] = useState<Tab>("overlay");
   const [preview, setPreview] = useState<CapturePreview | null | undefined>(undefined);
+  const [images, setImages] = useState<string[]>([]);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     getCapturePreview(jobId).then((result) => {
       if (!cancelled) setPreview(result);
+    });
+    listCaptureImages(jobId).then((names) => {
+      if (cancelled) return;
+      setImages(names);
+      setSelectedImage((current) => current ?? names[0] ?? null);
     });
     return () => {
       cancelled = true;
@@ -52,16 +60,49 @@ export function PipelineOutputTabs({ jobId }: { jobId: string }) {
         ))}
       </div>
 
-      {tab === "overlay" && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={overlayUrl(jobId)} alt="Detection overlay" className="w-full rounded-lg border border-zinc-200" />
+      {(tab === "overlay" || tab === "depth" || tab === "points") && images.length > 0 && (
+        <label className="flex flex-col gap-1 text-sm text-zinc-700">
+          Photo
+          <select
+            className="input"
+            value={selectedImage ?? ""}
+            onChange={(e) => setSelectedImage(e.target.value)}
+          >
+            {images.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
-      {tab === "depth" && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={depthUrl(jobId)} alt="Depth map" className="w-full rounded-lg border border-zinc-200" />
-      )}
+
+      {tab === "overlay" &&
+        (selectedImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={overlayUrl(jobId, selectedImage)}
+            alt="Detection overlay"
+            className="w-full rounded-lg border border-zinc-200"
+          />
+        ) : (
+          <p className="text-sm text-zinc-500">No photos captured yet.</p>
+        ))}
+      {tab === "depth" &&
+        (selectedImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={depthUrl(jobId, selectedImage)}
+            alt="Depth map"
+            className="w-full rounded-lg border border-zinc-200"
+          />
+        ) : (
+          <p className="text-sm text-zinc-500">No photos captured yet.</p>
+        ))}
       {tab === "inventory" && <InventoryPreviewTable preview={preview} />}
-      {tab === "points" && <PointCloudTab jobId={jobId} preview={preview} />}
+      {tab === "points" && (
+        <PointCloudTab jobId={jobId} preview={preview} selectedImage={selectedImage} />
+      )}
     </div>
   );
 }
@@ -75,6 +116,7 @@ function InventoryPreviewTable({ preview }: { preview: CapturePreview | null | u
         <thead>
           <tr className="text-zinc-500">
             <th className="py-1 pr-4">#</th>
+            <th className="py-1 pr-4">Photo</th>
             <th className="py-1 pr-4">Label</th>
             <th className="py-1 pr-4">Confidence</th>
             <th className="py-1 pr-4">W x H x D (m)</th>
@@ -83,8 +125,9 @@ function InventoryPreviewTable({ preview }: { preview: CapturePreview | null | u
         </thead>
         <tbody>
           {preview.items.map((item) => (
-            <tr key={item.index} className="border-t border-zinc-100">
+            <tr key={`${item.source_image_name}-${item.index}`} className="border-t border-zinc-100">
               <td className="py-1 pr-4">{item.index}</td>
+              <td className="py-1 pr-4 text-zinc-500">{item.source_image_name}</td>
               <td className="py-1 pr-4">{item.label}</td>
               <td className="py-1 pr-4">{item.detection_confidence.toFixed(2)}</td>
               <td className="py-1 pr-4">
@@ -95,8 +138,12 @@ function InventoryPreviewTable({ preview }: { preview: CapturePreview | null | u
             </tr>
           ))}
           {preview.errors.map((err) => (
-            <tr key={`err-${err.index}`} className="border-t border-zinc-100 text-red-600">
+            <tr
+              key={`err-${err.source_image_name}-${err.index}`}
+              className="border-t border-zinc-100 text-red-600"
+            >
               <td className="py-1 pr-4">{err.index}</td>
+              <td className="py-1 pr-4">{err.source_image_name}</td>
               <td className="py-1 pr-4">{err.label}</td>
               <td colSpan={3} className="py-1 pr-4">
                 {err.message}
@@ -112,33 +159,39 @@ function InventoryPreviewTable({ preview }: { preview: CapturePreview | null | u
 function PointCloudTab({
   jobId,
   preview,
+  selectedImage,
 }: {
   jobId: string;
   preview: CapturePreview | null | undefined;
+  selectedImage: string | null;
 }) {
   const [itemIndex, setItemIndex] = useState<number | null>(null);
   const [figure, setFigure] = useState<{ data: unknown[]; layout: Record<string, unknown> } | null>(null);
 
-  useEffect(() => {
-    if (preview && preview.items.length > 0 && itemIndex === null) {
-      setItemIndex(preview.items[0].index);
-    }
-  }, [preview, itemIndex]);
+  const itemsForImage =
+    preview && selectedImage
+      ? preview.items.filter((item) => item.source_image_name === selectedImage)
+      : [];
 
   useEffect(() => {
-    if (itemIndex === null) return;
+    setItemIndex(itemsForImage.length > 0 ? itemsForImage[0].index : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedImage]);
+
+  useEffect(() => {
+    if (itemIndex === null || !selectedImage) return;
     let cancelled = false;
     setFigure(null);
-    getPointCloud(jobId, itemIndex).then((result) => {
+    getPointCloud(jobId, selectedImage, itemIndex).then((result) => {
       if (!cancelled) setFigure(result as { data: unknown[]; layout: Record<string, unknown> } | null);
     });
     return () => {
       cancelled = true;
     };
-  }, [jobId, itemIndex]);
+  }, [jobId, selectedImage, itemIndex]);
 
   if (preview === undefined) return <p className="text-sm text-zinc-500">Loading...</p>;
-  if (preview === null || preview.items.length === 0) {
+  if (!selectedImage || itemsForImage.length === 0) {
     return <p className="text-sm text-zinc-500">No measured items to show a point cloud for.</p>;
   }
 
@@ -151,7 +204,7 @@ function PointCloudTab({
           value={itemIndex ?? ""}
           onChange={(e) => setItemIndex(Number(e.target.value))}
         >
-          {preview.items.map((item) => (
+          {itemsForImage.map((item) => (
             <option key={item.index} value={item.index}>
               {item.index}. {item.label}
             </option>

@@ -9,3 +9,4 @@ moveai_prototype/*.db-wal
 moveai_prototype/*.db-shm
 **/__pycache__/
 **/*.pyc
+.env
