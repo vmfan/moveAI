@@ -3,8 +3,9 @@
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { runCapture, type CaptureResult, type Sample } from "@/lib/api";
+import { runCapture, type CaptureResult, type Sample, type UploadedImage } from "@/lib/api";
 import { ImagePicker } from "@/components/capture/ImagePicker";
+import { ImageUploader } from "@/components/capture/ImageUploader";
 import {
   DEFAULT_PROMPT_FIELDS,
   PromptForm,
@@ -23,9 +24,13 @@ export function CaptureClient({
   hasExistingCapture: boolean;
 }) {
   const router = useRouter();
-  const [imageNames, setImageNames] = useState<string[]>([]);
+  const [source, setSource] = useState<"upload" | "sample">("upload");
+  const [sampleNames, setSampleNames] = useState<string[]>([]);
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [prompt, setPrompt] = useState<PromptFields>(DEFAULT_PROMPT_FIELDS);
   const [result, setResult] = useState<CaptureResult | null>(null);
+
+  const imageNames = [...uploadedImages.map((image) => image.name), ...sampleNames];
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -48,7 +53,31 @@ export function CaptureClient({
           Pick one or more photos of the same job. If you pick more than one, we&apos;ll
           automatically merge any item that shows up in more than one photo.
         </p>
-        <ImagePicker samples={samples} value={imageNames} onChange={setImageNames} />
+        <div className="flex gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => setSource("upload")}
+            className={`rounded-full px-3 py-1 font-medium transition-colors ${
+              source === "upload" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+            }`}
+          >
+            Upload photos
+          </button>
+          <button
+            type="button"
+            onClick={() => setSource("sample")}
+            className={`rounded-full px-3 py-1 font-medium transition-colors ${
+              source === "sample" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+            }`}
+          >
+            Use sample photos
+          </button>
+        </div>
+        {source === "upload" ? (
+          <ImageUploader jobId={jobId} value={uploadedImages} onChange={setUploadedImages} />
+        ) : (
+          <ImagePicker samples={samples} value={sampleNames} onChange={setSampleNames} />
+        )}
       </section>
 
       <section className="flex flex-col gap-3">

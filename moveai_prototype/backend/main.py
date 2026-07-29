@@ -37,6 +37,7 @@ from backend.routers import (  # noqa: E402
     quote,
     samples,
 )
+from backend.routers.capture import UPLOAD_DIR  # noqa: E402
 from backend.routers.samples import SAMPLE_DIR  # noqa: E402
 
 
@@ -53,7 +54,7 @@ app = FastAPI(title="MoveAI backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://localhost:\d+",
+    allow_origin_regex=r"http://(localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -68,3 +69,4 @@ app.include_router(console.router)
 app.include_router(capture.router)
 app.include_router(samples.router)
 app.mount("/static/samples", StaticFiles(directory=SAMPLE_DIR), name="samples")
+app.mount("/static/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")

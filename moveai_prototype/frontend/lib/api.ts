@@ -82,6 +82,22 @@ export async function listSamples(): Promise<Sample[]> {
   return samples.map((s) => ({ ...s, url: `${API_BASE}${s.url}` }));
 }
 
+// -- Uploads (Build 13) ---------------------------------------------------
+
+export type UploadedImage = { name: string; url: string };
+
+export async function uploadImages(jobId: string, files: File[]): Promise<UploadedImage[]> {
+  const formData = new FormData();
+  for (const file of files) formData.append("files", file);
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}/capture/uploads`, {
+    method: "POST",
+    body: formData,
+  });
+  await throwOnError(res, "upload images");
+  const body: { images: UploadedImage[] } = await res.json();
+  return body.images.map((image) => ({ ...image, url: `${API_BASE}${image.url}` }));
+}
+
 // -- Capture (Build 10/11) ------------------------------------------------
 
 export type CaptureRequest = {

@@ -3,10 +3,13 @@ GET endpoints serving the four artifacts `app.py`'s tabs already render
 (overlay, depth, point cloud, inventory) -- IMPLEMENTATION_ROADMAP.md
 Build 10.
 
-The image is resolved only against `real_world_samples/images/` (basename
-only, no path traversal) -- a real image-source picker (upload / URL /
-webcam) remains out of scope; this endpoint only needs the sample set wired
-end-to-end.
+`POST /uploads` (IMPLEMENTATION_ROADMAP.md Build 13) accepts direct
+multipart image uploads, storing them per-job under `UPLOAD_DIR` and
+returning server-generated names. `image_name` in the capture/artifact
+endpoints below is then resolved (basename only, no path traversal) against
+that per-job upload directory first, falling back to the shared
+`real_world_samples/images/` sample set -- both sources are supported side
+by side.
 
 Multi-image build: `POST` now accepts a batch of `image_names`, running the
 pipeline once per image (each still gets its own DB rows and its own
@@ -21,10 +24,12 @@ persisted; the failure is surfaced as `dedup_error` in the response instead.
 from __future__ import annotations
 
 import sqlite3
+import uuid
+from io import BytesIO
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Response
-from PIL import Image
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from PIL import Image, UnidentifiedImageError
 
 from backend import deps
 from backend.schemas import CaptureIn
@@ -38,15 +43,30 @@ router = APIRouter(prefix="/api/jobs/{job_id}/capture", tags=["capture"])
 
 APP_DIR = Path(__file__).resolve().parent.parent.parent
 SAMPLE_DIR = APP_DIR.parent / "real_world_samples" / "images"
+UPLOAD_DIR = APP_DIR / "backend" / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+ALLOWED_UPLOAD_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/heic",
+    "image/heif",
+}
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+MAX_UPLOAD_FILES = 20
 
 
-def _resolve_sample_image(image_name: str) -> Path:
-    path = SAMPLE_DIR / Path(image_name).name
-    if not path.is_file():
-        raise HTTPException(
-            status_code=404, detail=f"No sample image named {image_name!r}"
-        )
-    return path
+def _resolve_image(job_id: int, image_name: str) -> Path:
+    name = Path(image_name).name
+    uploaded_path = UPLOAD_DIR / str(job_id) / name
+    if uploaded_path.is_file():
+        return uploaded_path
+    sample_path = SAMPLE_DIR / name
+    if sample_path.is_file():
+        return sample_path
+    raise HTTPException(
+        status_code=404, detail=f"No uploaded or sample image named {image_name!r}"
+    )
 
 
 def _get_result_or_404(job_id: int, image_name: str):
@@ -57,6 +77,64 @@ def _get_result_or_404(job_id: int, image_name: str):
             detail=f"No capture has run yet for job {job_id!r}, image {image_name!r}",
         )
     return result
+
+
+@router.post("/uploads")
+def upload_images(
+    job: dict = Depends(deps.get_job_or_404),
+    files: list[UploadFile] = File(...),
+) -> dict:
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    if len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many files: max {MAX_UPLOAD_FILES} per upload",
+        )
+
+    job_upload_dir = UPLOAD_DIR / str(job["id"])
+    job_upload_dir.mkdir(parents=True, exist_ok=True)
+
+    uploaded: list[dict] = []
+    for upload in files:
+        if upload.content_type not in ALLOWED_UPLOAD_CONTENT_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {upload.content_type!r}",
+            )
+
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = upload.file.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{upload.filename!r} exceeds max size of "
+                    f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
+                )
+            chunks.append(chunk)
+        data = b"".join(chunks)
+
+        try:
+            Image.open(BytesIO(data)).verify()
+        except (UnidentifiedImageError, OSError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{upload.filename!r} is not a valid image",
+            ) from exc
+
+        suffix = Path(upload.filename or "").suffix
+        name = f"{uuid.uuid4().hex}{suffix}"
+        (job_upload_dir / name).write_bytes(data)
+        uploaded.append(
+            {"name": name, "url": f"/static/uploads/{job['id']}/{name}"}
+        )
+
+    return {"images": uploaded}
 
 
 @router.post("")
@@ -84,7 +162,7 @@ def capture(
     batch_captures: list[dedup.CaptureBatchImage] = []
 
     for image_name in payload.image_names:
-        image_path = _resolve_sample_image(image_name)
+        image_path = _resolve_image(job["id"], image_name)
         image = Image.open(image_path)
 
         result = pipeline_runtime.run_pipeline_locked(image, furniture_classes, config)
