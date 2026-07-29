@@ -1,5 +1,7 @@
 # MoveAI Prototype
 
+> **See [`../README.md`](../README.md) first** — it's the canonical entry point for running the full FastAPI + Next.js stack (local, LAN/mobile, and remote testing). This file covers only the legacy standalone Streamlit app below.
+
 `language + room image → Grounding DINO → SAM 2 → Depth Pro → Open3D OBB`
 
 This file covers how to run the prototype. For the architecture, design rationale, and how this fits the wider product, see [`../DESIGN.md`](../DESIGN.md).

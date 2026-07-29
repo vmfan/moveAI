@@ -10,7 +10,7 @@ For live, always-in-sync exploration, run the backend and open:
 ## Caveats — read before building against this API
 
 - **No authentication or authorization on any endpoint**, including the staff-only booking-decision endpoint (`POST /api/console/bookings/{booking_id}/decision`). This is prototype-only behavior — don't design a security model around it, and don't assume any endpoint is protected.
-- **CORS is locked to `http://localhost:<any port>`** (`main.py`). A frontend served from any other origin will need this widened before it can call the API from a browser.
+- **CORS accepts `http://localhost:<any port>` and `http://<any IPv4>:<any port>`** (`main.py`) — the latter is what lets a phone on the same LAN reach the API from its own IP-based origin (see `../README.md`). A frontend served from anything else (a real domain, HTTPS) will need this widened further before it can call the API from a browser.
 - **The capture-pipeline artifact endpoints are backed by an in-memory, process-local cache**, not the database:
   - `GET /api/jobs/{job_id}/capture/images`
   - `GET /api/jobs/{job_id}/capture/overlay.png`
@@ -19,7 +19,7 @@ For live, always-in-sync exploration, run the backend and open:
   - `GET /api/jobs/{job_id}/capture/points/{item_index}`
 
   These all 404 after a backend restart, even though the job and its DB-persisted inventory (`GET /api/jobs/{job_id}/inventory`) survive fine. Don't rely on these for anything that needs to persist.
-- `POST /api/jobs/{job_id}/capture` only accepts `image_names` that already exist as files in `real_world_samples/images/` — it's not an upload endpoint, and unknown names 404.
+- `POST /api/jobs/{job_id}/capture` accepts `image_names` resolved against **either** a per-job upload directory **or** the shared `real_world_samples/images/` sample set (checked in that order) — unknown names 404. Use `POST /api/jobs/{job_id}/capture/uploads` (multipart/form-data, `files: UploadFile[]`) first to upload real photos and get back the `image_names` to pass to `capture`; see `../IMPLEMENTATION_ROADMAP.md` Build 13.
 - The only backend-enforced step ordering is via `409` responses in the quote/booking routes when prerequisites (intake, pricing config, inventory items, a quote) are missing. The step gating in the current frontend (`lib/gating.ts`) is a **client-side UI convenience only** — it is not a backend contract. A new frontend is free to call any endpoint in any order; the backend will simply 409 if something required is missing.
 
 ## Endpoints
@@ -109,7 +109,13 @@ Response: `{"booking": <dict|null>, "blockers": ["..."]}`. If no quote exists ye
 
 ### Capture (AI pipeline) — `/api/jobs/{job_id}/capture`
 
-**`POST /api/jobs/{job_id}/capture`** — body: `CaptureIn` (`image_names: list[str]` required/non-empty, optional `furniture_classes`, `room_label`, `box_threshold`, `max_detections`). `image_names` must match files already in `real_world_samples/images/` (404 otherwise — not an upload endpoint). Auto-advances status `capture` → `inventory_review`. If ≥2 images are captured together, runs a cross-image dedup/room-labeling pass; failures there are captured into `dedup_error` rather than failing the whole request.
+**`POST /api/jobs/{job_id}/capture/uploads`** (`IMPLEMENTATION_ROADMAP.md` Build 13) — multipart/form-data, `files: UploadFile[]` (repeat the `files` field per image). Allowlisted content-types only (`image/jpeg`, `image/png`, `image/heic`, `image/heif`), 15 MB/file cap, 20 files/request cap, each file verified as a real decodable image before being accepted (`400` otherwise). Stores accepted files under a per-job upload directory and returns server-generated names:
+```json
+{"images": [{"name": "<generated-name>.jpg", "url": "/static/uploads/{job_id}/<generated-name>.jpg"}, ...]}
+```
+Pass the returned `name`s straight into `POST .../capture`'s `image_names` below.
+
+**`POST /api/jobs/{job_id}/capture`** — body: `CaptureIn` (`image_names: list[str]` required/non-empty, optional `furniture_classes`, `room_label`, `box_threshold`, `max_detections`). Each `image_name` is resolved against that job's uploaded images first, then falling back to the shared `real_world_samples/images/` sample set (404 if found in neither). Auto-advances status `capture` → `inventory_review`. If ≥2 images are captured together, runs a cross-image dedup/room-labeling pass; failures there are captured into `dedup_error` rather than failing the whole request.
 Response:
 ```json
 {
