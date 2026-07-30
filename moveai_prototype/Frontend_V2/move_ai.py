@@ -347,6 +347,28 @@ def go_to(step: int) -> None:
     st.rerun()
 
 
+def sync_furniture_state(job_id: int) -> None:
+    inventory = MoveAIBackend().get_inventory(job_id)
+    items = inventory.get("items", []) if isinstance(inventory, dict) else []
+    furniture = []
+    for item in items:
+        w, h, d = (float(item.get(k, 0) or 0) for k in ("width_m", "height_m", "depth_m"))
+        furniture.append({
+            "item_id": item.get("id"),
+            "name": item.get("label", "Item"),
+            "room_label": item.get("room_label") or "Unassigned room",
+            "quantity": float(item.get("quantity", 1) or 1),
+            "width_m": w, "height_m": h, "depth_m": d,
+            "volume_m3": float(item.get("unit_volume_m3", w * h * d) or w * h * d),
+            "measurement_basis": item.get("measurement_basis", ""),
+            "review_state": item.get("review_state", "auto_accept"),
+            "review_reason": item.get("review_reason"),
+            "customer_confirmed": bool(item.get("customer_confirmed")),
+        })
+    st.session_state.furniture = furniture
+    st.session_state.backend_inventory = inventory
+
+
 def contact_page() -> None:
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.subheader("Your contact details")
@@ -538,20 +560,8 @@ def upload_page() -> None:
                     uploaded = api.upload_images(st.session_state.job_id, image_files)
                     image_names = api.extract_image_names(uploaded)
                     api.capture(st.session_state.job_id, image_names)
-                    inventory = api.get_inventory(st.session_state.job_id)
+                    sync_furniture_state(st.session_state.job_id)
                 st.session_state.uploaded_names = image_names
-                st.session_state.backend_inventory = inventory
-                items = inventory.get("items", []) if isinstance(inventory, dict) else []
-                st.session_state.furniture = []
-                for item in items:
-                    w, h, d = (float(item.get(k, 0) or 0) for k in ("width_m", "height_m", "depth_m"))
-                    st.session_state.furniture.append({
-                        "item_id": item.get("id"),
-                        "name": item.get("label", "Detected item"), "quantity": float(item.get("quantity", 1) or 1),
-                        "width_m": w, "height_m": h, "depth_m": d,
-                        "volume_m3": float(item.get("unit_volume_m3", w*h*d) or w*h*d),
-                        "source": "AI detected",
-                    })
                 go_to(3)
             except BackendError as exc:
                 st.error(str(exc))
@@ -566,22 +576,86 @@ def furniture_page() -> None:
         "The detected list is editable. Add missing items before requesting the quote."
     )
 
-    if st.session_state.furniture:
-        furniture_df = pd.DataFrame(st.session_state.furniture)
-        display_df = furniture_df[
-            ["name", "quantity", "volume_m3"]
-        ].rename(
-            columns={
-                "name": "Furniture",
-                "quantity": "Quantity",
-                "volume_m3": "Volume / item (m³)",
-            }
-        )
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+    with st.spinner("Loading inventory..."):
+        sync_furniture_state(st.session_state.job_id)
+
+    furniture = st.session_state.furniture
+    job_id = st.session_state.job_id
+
+    staff_escalate = [f for f in furniture if f["review_state"] == "staff_escalate"]
+    needs_confirmation = [
+        f for f in furniture
+        if f["review_state"] == "customer_confirm" and not f["customer_confirmed"]
+    ]
+    confirmed = [f for f in furniture if f not in staff_escalate and f not in needs_confirmation]
+
+    if needs_confirmation:
+        st.markdown("#### Needs your confirmation")
+        st.caption("These items were detected with low confidence. Confirm, correct, or remove them.")
+        for item in needs_confirmation:
+            with st.container():
+                cols = st.columns([2.2, 1, 1, 1])
+                cols[0].write(f"**{item['name']}** · {item['room_label']}")
+                cols[0].caption(
+                    f"{item['width_m']:.2f} × {item['height_m']:.2f} × {item['depth_m']:.2f} m"
+                    + (f" — {item['review_reason']}" if item.get("review_reason") else "")
+                )
+                if cols[1].button("Confirm", key=f"confirm_{item['item_id']}", use_container_width=True):
+                    try:
+                        MoveAIBackend().confirm_item(job_id, item["item_id"])
+                        st.rerun()
+                    except BackendError as exc:
+                        st.error(str(exc))
+                correct_toggle = cols[2].toggle("Correct", key=f"toggle_correct_{item['item_id']}")
+                if cols[3].button("Remove", key=f"remove_{item['item_id']}", use_container_width=True):
+                    try:
+                        MoveAIBackend().delete_inventory_item(job_id, item["item_id"])
+                        st.rerun()
+                    except BackendError as exc:
+                        st.error(str(exc))
+                if correct_toggle:
+                    with st.form(f"correct_form_{item['item_id']}"):
+                        cw, ch, cd = st.columns(3)
+                        new_w = cw.number_input("Width (m)", min_value=0.01, value=float(item["width_m"] or 0.01), step=0.05)
+                        new_h = ch.number_input("Height (m)", min_value=0.01, value=float(item["height_m"] or 0.01), step=0.05)
+                        new_d = cd.number_input("Depth (m)", min_value=0.01, value=float(item["depth_m"] or 0.01), step=0.05)
+                        if st.form_submit_button("Save correction"):
+                            try:
+                                MoveAIBackend().correct_item(job_id, item["item_id"], new_w, new_h, new_d)
+                                st.rerun()
+                            except BackendError as exc:
+                                st.error(str(exc))
+        st.divider()
+
+    if staff_escalate:
+        st.markdown("#### Flagged for staff review")
+        for item in staff_escalate:
+            st.info(
+                f"**{item['name']}** · {item['room_label']} — flagged for staff review, "
+                "no action needed from you."
+            )
+        st.divider()
+
+    if confirmed:
+        st.markdown("#### Your inventory")
+        rooms: dict[str, list] = {}
+        for item in confirmed:
+            rooms.setdefault(item["room_label"], []).append(item)
+        for room_label, room_items in rooms.items():
+            st.markdown(f"**{room_label}**")
+            display_df = pd.DataFrame(room_items)[
+                ["name", "quantity", "width_m", "height_m", "depth_m", "volume_m3"]
+            ].rename(
+                columns={
+                    "name": "Furniture",
+                    "quantity": "Quantity",
+                    "width_m": "Width (m)",
+                    "height_m": "Height (m)",
+                    "depth_m": "Depth (m)",
+                    "volume_m3": "Volume / item (m³)",
+                }
+            )
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
 
     st.divider()
     st.markdown("#### Add furniture manually")
@@ -601,26 +675,19 @@ def furniture_page() -> None:
 
     if add_item:
         try:
-            created = MoveAIBackend().add_declared_item(st.session_state.job_id, {
+            MoveAIBackend().add_declared_item(st.session_state.job_id, {
                 "label": item_name, "room_label": room_label.strip() or None,
                 "quantity": float(quantity), "width_m": float(width_m),
                 "height_m": float(height_m), "depth_m": float(depth_m),
-            })
-            st.session_state.furniture.append({
-                "item_id": created.get("id") if isinstance(created, dict) else None,
-                "name": item_name, "quantity": int(quantity), "width_m": float(width_m),
-                "height_m": float(height_m), "depth_m": float(depth_m),
-                "volume_m3": round(float(width_m*height_m*depth_m), 3),
-                "source": "Manually added",
             })
             st.rerun()
         except BackendError as exc:
             st.error(str(exc))
 
-    if st.session_state.furniture:
+    if confirmed:
         remove_options = [
             f"{index + 1}. {item['name']} ({item['quantity']}×)"
-            for index, item in enumerate(st.session_state.furniture)
+            for index, item in enumerate(confirmed)
         ]
         selected_remove = st.selectbox(
             "Remove an item",
@@ -631,14 +698,16 @@ def furniture_page() -> None:
             disabled=selected_remove == "Select an item",
         ):
             remove_index = remove_options.index(selected_remove)
-            item_id = st.session_state.furniture[remove_index].get("item_id")
+            item_id = confirmed[remove_index].get("item_id")
             try:
                 if item_id is not None:
                     MoveAIBackend().delete_inventory_item(st.session_state.job_id, item_id)
-                st.session_state.furniture.pop(remove_index)
                 st.rerun()
             except BackendError as exc:
                 st.error(str(exc))
+
+    if needs_confirmation:
+        st.warning("Please confirm, correct, or remove the flagged items above before requesting your quote.")
 
     st.divider()
     back_col, next_col = st.columns([1, 2])
@@ -652,7 +721,7 @@ def furniture_page() -> None:
             "Review request",
             type="primary",
             use_container_width=True,
-            disabled=not st.session_state.furniture,
+            disabled=not furniture or bool(needs_confirmation),
         ):
             try:
                 with st.spinner("Calculating your quote..."):
