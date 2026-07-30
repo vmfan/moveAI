@@ -87,6 +87,18 @@ class MoveAIBackend:
     def delete_inventory_item(self, job_id: int, item_id: int) -> Any:
         return self.request("DELETE", f"/api/jobs/{job_id}/inventory/{item_id}")
 
+    # --- Geocode --------------------------------------------------------------
+
+    def autocomplete_address(self, query: str) -> list[dict]:
+        """Address suggestions `[{"label", "lat", "lng"}, ...]`. Returns `[]`
+        on any backend error so a flaky network never blocks typing.
+        """
+        try:
+            result = self.request("GET", "/api/geocode/autocomplete", params={"q": query})
+        except BackendError:
+            return []
+        return result if isinstance(result, list) else []
+
     # --- Quote --------------------------------------------------------------
 
     def get_quote(self, job_id: int) -> Any:

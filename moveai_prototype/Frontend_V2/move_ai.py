@@ -369,6 +369,66 @@ def sync_furniture_state(job_id: int) -> None:
     st.session_state.backend_inventory = inventory
 
 
+def address_autocomplete_field(label: str, key_prefix: str, default_value: str = "") -> dict:
+    """Text input + backend-queried suggestion selectbox for one address.
+
+    Streamlit forms don't rerun on inner-widget change until submit, so this
+    lives outside `st.form` and is called before it. Returns
+    `{"address": str, "lat": float | None, "lng": float | None}` -- lat/lng
+    are only set once the user picks a suggestion; otherwise the typed free
+    text is used as-is (identical to pre-autocomplete behavior).
+    """
+    query_key = f"{key_prefix}_query"
+    suggestions_key = f"{key_prefix}_suggestions"
+    last_query_key = f"{key_prefix}_last_query"
+    coords_key = f"{key_prefix}_coords"
+
+    st.session_state.setdefault(query_key, default_value)
+    st.session_state.setdefault(suggestions_key, [])
+    st.session_state.setdefault(last_query_key, "")
+    st.session_state.setdefault(coords_key, None)
+
+    st.markdown(f"**{label}**")
+    query = st.text_input(
+        label,
+        key=query_key,
+        placeholder="Street, city, postal code",
+        label_visibility="collapsed",
+    )
+
+    query_stripped = query.strip()
+    if query_stripped != st.session_state[last_query_key]:
+        st.session_state[last_query_key] = query_stripped
+        st.session_state[coords_key] = None
+        if len(query_stripped) >= 4:
+            api = MoveAIBackend()
+            st.session_state[suggestions_key] = api.autocomplete_address(query_stripped)
+        else:
+            st.session_state[suggestions_key] = []
+
+    suggestions = st.session_state[suggestions_key]
+    if suggestions:
+        keep_typed = "Keep typed address"
+        options = [keep_typed] + [s["label"] for s in suggestions]
+        choice = st.selectbox(
+            f"{label} suggestions",
+            options=options,
+            key=f"{key_prefix}_suggestion_choice",
+            label_visibility="collapsed",
+        )
+        if choice != keep_typed:
+            match = next((s for s in suggestions if s["label"] == choice), None)
+            if match:
+                st.session_state[coords_key] = {"lat": match["lat"], "lng": match["lng"]}
+
+    coords = st.session_state[coords_key]
+    return {
+        "address": query_stripped,
+        "lat": coords["lat"] if coords else None,
+        "lng": coords["lng"] if coords else None,
+    }
+
+
 def contact_page() -> None:
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.subheader("Your contact details")
@@ -376,6 +436,17 @@ def contact_page() -> None:
 
     customer = st.session_state.customer
     move = st.session_state.move
+
+    st.subheader("Pickup and destination")
+    pickup_addr_col, destination_addr_col = st.columns(2)
+    with pickup_addr_col:
+        pickup = address_autocomplete_field(
+            "Current address *", "pickup_address", move.get("pickup_address", "")
+        )
+    with destination_addr_col:
+        destination = address_autocomplete_field(
+            "Destination address *", "destination_address", move.get("destination_address", "")
+        )
 
     with st.form("contact_form"):
         left, right = st.columns(2)
@@ -406,20 +477,9 @@ def contact_page() -> None:
                 height=140,
             )
 
-        st.divider()
-        st.subheader("Pickup and destination")
-
         pickup_col, destination_col = st.columns(2)
 
         with pickup_col:
-            st.markdown("**Pickup address**")
-            pickup_address = st.text_area(
-                "Current address *",
-                value=move.get("pickup_address", ""),
-                placeholder="Street, city, postal code",
-                height=92,
-                label_visibility="collapsed",
-            )
             pickup_floor = st.number_input(
                 "Pickup floor",
                 min_value=0,
@@ -433,14 +493,6 @@ def contact_page() -> None:
             )
 
         with destination_col:
-            st.markdown("**Move-to address**")
-            destination_address = st.text_area(
-                "Destination address *",
-                value=move.get("destination_address", ""),
-                placeholder="Street, city, postal code",
-                height=92,
-                label_visibility="collapsed",
-            )
             destination_floor = st.number_input(
                 "Destination floor",
                 min_value=0,
@@ -467,9 +519,9 @@ def contact_page() -> None:
             missing.append("valid email")
         if not phone.strip():
             missing.append("phone")
-        if not pickup_address.strip():
+        if not pickup["address"]:
             missing.append("pickup address")
-        if not destination_address.strip():
+        if not destination["address"]:
             missing.append("destination address")
 
         if missing:
@@ -482,8 +534,8 @@ def contact_page() -> None:
             }
             st.session_state.move = {
                 "moving_date": str(moving_date), "notes": notes.strip(),
-                "pickup_address": pickup_address.strip(), "pickup_floor": int(pickup_floor),
-                "pickup_lift": pickup_lift, "destination_address": destination_address.strip(),
+                "pickup_address": pickup["address"], "pickup_floor": int(pickup_floor),
+                "pickup_lift": pickup_lift, "destination_address": destination["address"],
                 "destination_floor": int(destination_floor), "destination_lift": destination_lift,
             }
             try:
@@ -493,10 +545,12 @@ def contact_page() -> None:
                     api.submit_intake(job_id, {
                         "contact_name": name.strip(), "contact_email": email.strip(),
                         "contact_phone": phone.strip() or None,
-                        "origin_address": pickup_address.strip(), "origin_floor": int(pickup_floor),
+                        "origin_address": pickup["address"], "origin_floor": int(pickup_floor),
                         "origin_has_lift": bool(pickup_lift), "origin_parking_distance_m": 0.0,
-                        "destination_address": destination_address.strip(), "destination_floor": int(destination_floor),
+                        "origin_lat": pickup["lat"], "origin_lng": pickup["lng"],
+                        "destination_address": destination["address"], "destination_floor": int(destination_floor),
                         "destination_has_lift": bool(destination_lift), "destination_parking_distance_m": 0.0,
+                        "destination_lat": destination["lat"], "destination_lng": destination["lng"],
                         "room_count": 1, "preferred_move_date": str(moving_date),
                     })
                 st.session_state.job_id = job_id

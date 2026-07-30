@@ -19,10 +19,14 @@ class IntakeIn(BaseModel):
     origin_floor: int = 0
     origin_has_lift: bool = False
     origin_parking_distance_m: float = 0.0
+    origin_lat: float | None = None
+    origin_lng: float | None = None
     destination_address: str
     destination_floor: int = 0
     destination_has_lift: bool = False
     destination_parking_distance_m: float = 0.0
+    destination_lat: float | None = None
+    destination_lng: float | None = None
     room_count: int = 1
     preferred_move_date: str | None = None
 

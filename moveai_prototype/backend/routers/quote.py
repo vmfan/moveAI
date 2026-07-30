@@ -21,6 +21,7 @@ def _build_fresh(conn: sqlite3.Connection, job_id: int) -> tuple["pricing.Quote"
     config = db.get_active_pricing_config(conn)
     if config is None:
         raise HTTPException(status_code=409, detail="No active pricing configuration.")
+    intake = quote_sync.ensure_intake_distance(conn, job_id, intake, config)
     items = db.list_inventory_items(conn, job_id)
     if not items:
         raise HTTPException(status_code=409, detail="No inventory items yet.")

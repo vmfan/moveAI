@@ -31,6 +31,7 @@ from backend.routers import (  # noqa: E402
     booking,
     capture,
     console,
+    geocode,
     intake,
     inventory,
     jobs,
@@ -64,6 +65,7 @@ app.include_router(jobs.router)
 app.include_router(intake.router)
 app.include_router(inventory.router)
 app.include_router(quote.router)
+app.include_router(geocode.router)
 app.include_router(booking.router)
 app.include_router(console.router)
 app.include_router(capture.router)

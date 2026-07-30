@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import db
 import pricing
+from backend import ors_client
 
 
 _FLOAT_TOL = 1e-6
@@ -67,9 +68,69 @@ def quote_matches(
         return False
     if abs(stored_quote["access_multiplier"] - fresh.access_multiplier) > _FLOAT_TOL:
         return False
+    if abs((stored_quote.get("distance_fee") or 0.0) - fresh.distance_fee) > 0.01:
+        return False
     if (stored_quote.get("recommended_truck") or None) != (fresh.recommended_truck or None):
         return False
     return _stored_lines_key(stored_lines) == _lines_key(fresh.lines)
+
+
+def ensure_intake_distance(conn, job_id: int, intake: dict, config: dict) -> dict:
+    """Geocode origin/destination/depot and cache the depot round-trip
+    distance on the intake row, if not already cached. ORS availability must
+    never block quoting -- any failure leaves `distance_km` unset and the
+    caller proceeds with today's behavior (`distance_fee` computes to 0).
+
+    Returns the (possibly updated) intake dict.
+    """
+    if intake.get("distance_km") is not None:
+        return intake
+
+    depot_address = config.get("depot_address")
+    if not depot_address:
+        return intake
+
+    try:
+        depot_lat, depot_lng = config.get("depot_lat"), config.get("depot_lng")
+        if depot_lat is None or depot_lng is None:
+            depot_coords = ors_client.geocode(depot_address)
+            if depot_coords is None:
+                return intake
+            depot_lat, depot_lng = depot_coords
+            db.set_pricing_config_depot_coords(
+                conn, config["id"], lat=depot_lat, lng=depot_lng
+            )
+
+        origin_lat, origin_lng = intake.get("origin_lat"), intake.get("origin_lng")
+        if origin_lat is None or origin_lng is None:
+            origin_coords = ors_client.geocode(intake["origin_address"])
+            if origin_coords is None:
+                return intake
+            origin_lat, origin_lng = origin_coords
+
+        destination_lat, destination_lng = (
+            intake.get("destination_lat"),
+            intake.get("destination_lng"),
+        )
+        if destination_lat is None or destination_lng is None:
+            destination_coords = ors_client.geocode(intake["destination_address"])
+            if destination_coords is None:
+                return intake
+            destination_lat, destination_lng = destination_coords
+
+        distance_km = ors_client.route_distance_km(
+            [
+                (depot_lat, depot_lng),
+                (origin_lat, origin_lng),
+                (destination_lat, destination_lng),
+                (depot_lat, depot_lng),
+            ]
+        )
+    except ors_client.OrsClientError:
+        return intake
+
+    db.set_intake_distance(conn, job_id, distance_km)
+    return db.get_intake(conn, job_id)
 
 
 def persist_quote(

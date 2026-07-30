@@ -26,6 +26,7 @@ so `parking_multiplier_per_10m` only bites past that free threshold.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -65,6 +66,38 @@ _DEFAULT_PRICING_CONFIG = {
     "max_access_multiplier": 2.0,
     "boxed_goods_labour_multiplier": 1.25,
     "volume_per_box_m3": 0.11,
+    # Depot-to-address travel distance, priced via `price_per_km` (a
+    # separate concern from `parking_multiplier_per_10m`'s curb-to-door
+    # carry distance -- see pricing.py). `depot_address` is the
+    # human-editable source of truth; `depot_lat`/`depot_lng` are geocoded
+    # lazily on first use and cached here so it isn't re-geocoded per quote.
+    "price_per_km": 8.0,
+    "depot_address": os.environ.get("MOVEAI_DEPOT_ADDRESS"),
+    "depot_lat": None,
+    "depot_lng": None,
+}
+
+# Columns added after the initial schema went out with a live `moveai.db` on
+# disk -- `CREATE TABLE IF NOT EXISTS` alone won't add them to an
+# already-created table, so `initialize()` also runs this simple migration.
+_SCHEMA_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
+    "intake": [
+        ("origin_lat", "REAL"),
+        ("origin_lng", "REAL"),
+        ("destination_lat", "REAL"),
+        ("destination_lng", "REAL"),
+        ("distance_km", "REAL"),
+    ],
+    "pricing_config": [
+        ("price_per_km", "REAL NOT NULL DEFAULT 0"),
+        ("depot_address", "TEXT"),
+        ("depot_lat", "REAL"),
+        ("depot_lng", "REAL"),
+    ],
+    "quote": [
+        ("distance_km", "REAL NOT NULL DEFAULT 0"),
+        ("distance_fee", "REAL NOT NULL DEFAULT 0"),
+    ],
 }
 
 _INVENTORY_ITEM_UPDATABLE_COLUMNS = {
@@ -105,6 +138,17 @@ def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
     return conn
 
 
+def _apply_schema_migrations(conn: sqlite3.Connection) -> None:
+    for table, columns in _SCHEMA_MIGRATIONS.items():
+        existing_columns = {
+            row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for column, ddl in columns:
+            if column not in existing_columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    conn.commit()
+
+
 def initialize(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
@@ -125,10 +169,15 @@ def initialize(conn: sqlite3.Connection) -> None:
             origin_floor INTEGER NOT NULL DEFAULT 0,
             origin_has_lift INTEGER NOT NULL DEFAULT 0 CHECK (origin_has_lift IN (0,1)),
             origin_parking_distance_m REAL NOT NULL DEFAULT 0,
+            origin_lat REAL,
+            origin_lng REAL,
             destination_address TEXT NOT NULL,
             destination_floor INTEGER NOT NULL DEFAULT 0,
             destination_has_lift INTEGER NOT NULL DEFAULT 0 CHECK (destination_has_lift IN (0,1)),
             destination_parking_distance_m REAL NOT NULL DEFAULT 0,
+            destination_lat REAL,
+            destination_lng REAL,
+            distance_km REAL,
             room_count INTEGER NOT NULL DEFAULT 1,
             preferred_move_date TEXT,
             created_at TEXT NOT NULL,
@@ -198,6 +247,10 @@ def initialize(conn: sqlite3.Connection) -> None:
             max_access_multiplier REAL NOT NULL,
             boxed_goods_labour_multiplier REAL NOT NULL,
             volume_per_box_m3 REAL NOT NULL,
+            price_per_km REAL NOT NULL DEFAULT 0,
+            depot_address TEXT,
+            depot_lat REAL,
+            depot_lng REAL,
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
             created_at TEXT NOT NULL
         );
@@ -215,6 +268,8 @@ def initialize(conn: sqlite3.Connection) -> None:
             upper_bound_volume_m3 REAL NOT NULL,
             volume_margin_fraction REAL NOT NULL,
             access_multiplier REAL NOT NULL,
+            distance_km REAL NOT NULL DEFAULT 0,
+            distance_fee REAL NOT NULL DEFAULT 0,
             total_price REAL NOT NULL,
             recommended_truck TEXT,
             is_superseded INTEGER NOT NULL DEFAULT 0 CHECK (is_superseded IN (0,1)),
@@ -252,6 +307,7 @@ def initialize(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
+    _apply_schema_migrations(conn)
 
     existing = conn.execute("SELECT COUNT(*) AS n FROM pricing_config").fetchone()
     if existing["n"] == 0:
@@ -308,10 +364,14 @@ def save_intake(conn: sqlite3.Connection, job_id: int, **fields) -> None:
         "origin_floor",
         "origin_has_lift",
         "origin_parking_distance_m",
+        "origin_lat",
+        "origin_lng",
         "destination_address",
         "destination_floor",
         "destination_has_lift",
         "destination_parking_distance_m",
+        "destination_lat",
+        "destination_lng",
         "room_count",
         "preferred_move_date",
     ]
@@ -336,6 +396,18 @@ def save_intake(conn: sqlite3.Connection, job_id: int, **fields) -> None:
 def get_intake(conn: sqlite3.Connection, job_id: int) -> dict | None:
     row = conn.execute("SELECT * FROM intake WHERE job_id = ?", (job_id,)).fetchone()
     return dict(row) if row else None
+
+
+def set_intake_distance(conn: sqlite3.Connection, job_id: int, distance_km: float | None) -> None:
+    """Cache the depot-to-address distance computed for a quote. Distance is
+    derived from geocoded addresses, never client-supplied, so it has its
+    own setter rather than living in `save_intake`'s column list.
+    """
+    conn.execute(
+        "UPDATE intake SET distance_km = ?, updated_at = ? WHERE job_id = ?",
+        (distance_km, _now(), job_id),
+    )
+    conn.commit()
 
 
 # --------------------------------------------------------------------------
@@ -534,8 +606,9 @@ def save_pricing_config(conn: sqlite3.Connection, config: dict) -> int:
             volume_margin_fraction, floor_multiplier_per_level, lift_multiplier,
             parking_multiplier_per_10m, max_access_multiplier,
             boxed_goods_labour_multiplier, volume_per_box_m3,
+            price_per_km, depot_address, depot_lat, depot_lng,
             is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
         """,
         (
             config["name"],
@@ -550,11 +623,28 @@ def save_pricing_config(conn: sqlite3.Connection, config: dict) -> int:
             config["max_access_multiplier"],
             config["boxed_goods_labour_multiplier"],
             config["volume_per_box_m3"],
+            config.get("price_per_km", 0.0),
+            config.get("depot_address"),
+            config.get("depot_lat"),
+            config.get("depot_lng"),
             _now(),
         ),
     )
     conn.commit()
     return int(cursor.lastrowid)
+
+
+def set_pricing_config_depot_coords(
+    conn: sqlite3.Connection, pricing_config_id: int, *, lat: float, lng: float
+) -> None:
+    """Cache geocoded depot coordinates on the active pricing config row so
+    the depot address is only geocoded once, not on every quote.
+    """
+    conn.execute(
+        "UPDATE pricing_config SET depot_lat = ?, depot_lng = ? WHERE id = ?",
+        (lat, lng, pricing_config_id),
+    )
+    conn.commit()
 
 
 # --------------------------------------------------------------------------
@@ -571,6 +661,8 @@ def create_quote(
     upper_bound_volume_m3: float,
     volume_margin_fraction: float,
     access_multiplier: float,
+    distance_km: float = 0.0,
+    distance_fee: float = 0.0,
     total_price: float,
     recommended_truck: str | None,
     lines: list[dict],
@@ -597,8 +689,9 @@ def create_quote(
         INSERT INTO quote (
             job_id, version, pricing_config_id, total_volume_m3,
             upper_bound_volume_m3, volume_margin_fraction, access_multiplier,
+            distance_km, distance_fee,
             total_price, recommended_truck, is_superseded, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
         """,
         (
             job_id,
@@ -608,6 +701,8 @@ def create_quote(
             upper_bound_volume_m3,
             volume_margin_fraction,
             access_multiplier,
+            distance_km,
+            distance_fee,
             total_price,
             recommended_truck,
             now,

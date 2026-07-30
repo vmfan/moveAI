@@ -117,6 +117,8 @@ class Quote:
     access_multiplier: float
     total_price: float
     recommended_truck: str | None
+    distance_km: float = 0.0
+    distance_fee: float = 0.0
     escalated_item_ids: list[int] = field(default_factory=list)
     unmeasured_item_ids: list[int] = field(default_factory=list)
 
@@ -191,8 +193,13 @@ def build_quote(
             if dim is not None:
                 largest_dimension_m = max(largest_dimension_m, float(dim))
 
-    subtotal = float(config["base_callout_fee"]) + sum(
-        line.price_component for line in lines
+    distance_km = float(intake.get("distance_km") or 0.0)
+    distance_fee = distance_km * float(config.get("price_per_km") or 0.0)
+
+    subtotal = (
+        float(config["base_callout_fee"])
+        + distance_fee
+        + sum(line.price_component for line in lines)
     )
     total_price = max(subtotal, float(config["minimum_charge"]))
 
@@ -208,6 +215,8 @@ def build_quote(
         access_multiplier=access_mult,
         total_price=total_price,
         recommended_truck=truck.label if truck.fits else _multi_trip_label(truck),
+        distance_km=distance_km,
+        distance_fee=distance_fee,
         escalated_item_ids=escalated_item_ids,
         unmeasured_item_ids=unmeasured_item_ids,
     )
@@ -221,6 +230,8 @@ def quote_to_db_kwargs(quote: Quote, *, pricing_config_id: int) -> dict:
         "upper_bound_volume_m3": quote.upper_bound_volume_m3,
         "volume_margin_fraction": quote.volume_margin_fraction,
         "access_multiplier": quote.access_multiplier,
+        "distance_km": quote.distance_km,
+        "distance_fee": quote.distance_fee,
         "total_price": quote.total_price,
         "recommended_truck": quote.recommended_truck,
         "lines": [
