@@ -7,7 +7,9 @@ import requests
 
 
 class BackendError(RuntimeError):
-    pass
+    def __init__(self, message: str, detail: Any = None):
+        super().__init__(message)
+        self.detail = detail
 
 
 class MoveAIBackend:
@@ -29,10 +31,14 @@ class MoveAIBackend:
             ) from exc
         if not response.ok:
             try:
-                detail = response.json()
+                payload = response.json()
             except ValueError:
-                detail = response.text
-            raise BackendError(f"Backend returned HTTP {response.status_code} for {method} {path}: {detail}")
+                payload = response.text
+            detail = payload.get("detail") if isinstance(payload, dict) else payload
+            raise BackendError(
+                f"Backend returned HTTP {response.status_code} for {method} {path}: {payload}",
+                detail=detail,
+            )
         if response.status_code == 204 or not response.content:
             return None
         return response.json() if "json" in response.headers.get("content-type", "") else response.content

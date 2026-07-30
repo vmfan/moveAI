@@ -206,7 +206,8 @@ if "flash" in st.session_state:
 
 api = MoveAIBackend()
 try:
-    raw = api.list_console_jobs()
+    with st.spinner("Loading console..."):
+        raw = api.list_console_jobs()
 except BackendError as exc:
     st.error(str(exc))
     st.stop()
@@ -249,14 +250,15 @@ selected_booking = selected.get("booking", {})
 booking_id = selected_booking.get("id")
 intake = selected.get("intake") or {}
 
-try:
-    inventory = api.get_inventory(job_id)
-except BackendError as exc:
-    inventory = {"items": [], "error": str(exc)}
-try:
-    quote = api.get_quote(job_id)
-except BackendError as exc:
-    quote = {"error": str(exc)}
+with st.spinner("Loading job details..."):
+    try:
+        inventory = api.get_inventory(job_id)
+    except BackendError as exc:
+        inventory = {"items": [], "error": str(exc)}
+    try:
+        quote = api.get_quote(job_id)
+    except BackendError as exc:
+        quote = {"error": str(exc)}
 
 customer = intake
 move = intake
@@ -326,14 +328,16 @@ approve, decline = st.columns(2)
 with approve:
     if st.button("Approve quote", type="primary", use_container_width=True):
         try:
-            api.staff_decision(booking_id, "confirmed", note)
+            with st.spinner("Saving decision..."):
+                api.staff_decision(booking_id, "confirmed", note)
             st.session_state["flash"] = "Request approved in the backend."
             st.rerun()
         except BackendError as exc: st.error(str(exc))
 with decline:
     if st.button("Decline request", use_container_width=True):
         try:
-            api.staff_decision(booking_id, "cancelled", note)
+            with st.spinner("Saving decision..."):
+                api.staff_decision(booking_id, "cancelled", note)
             st.session_state["flash"] = "Request declined in the backend."
             st.rerun()
         except BackendError as exc: st.error(str(exc))

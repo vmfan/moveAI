@@ -465,17 +465,18 @@ def contact_page() -> None:
                 "destination_floor": int(destination_floor), "destination_lift": destination_lift,
             }
             try:
-                api = MoveAIBackend()
-                job_id, _ = api.create_job()
-                api.submit_intake(job_id, {
-                    "contact_name": name.strip(), "contact_email": email.strip(),
-                    "contact_phone": phone.strip() or None,
-                    "origin_address": pickup_address.strip(), "origin_floor": int(pickup_floor),
-                    "origin_has_lift": bool(pickup_lift), "origin_parking_distance_m": 0.0,
-                    "destination_address": destination_address.strip(), "destination_floor": int(destination_floor),
-                    "destination_has_lift": bool(destination_lift), "destination_parking_distance_m": 0.0,
-                    "room_count": 1, "preferred_move_date": str(moving_date),
-                })
+                with st.spinner("Creating your job..."):
+                    api = MoveAIBackend()
+                    job_id, _ = api.create_job()
+                    api.submit_intake(job_id, {
+                        "contact_name": name.strip(), "contact_email": email.strip(),
+                        "contact_phone": phone.strip() or None,
+                        "origin_address": pickup_address.strip(), "origin_floor": int(pickup_floor),
+                        "origin_has_lift": bool(pickup_lift), "origin_parking_distance_m": 0.0,
+                        "destination_address": destination_address.strip(), "destination_floor": int(destination_floor),
+                        "destination_has_lift": bool(destination_lift), "destination_parking_distance_m": 0.0,
+                        "room_count": 1, "preferred_move_date": str(moving_date),
+                    })
                 st.session_state.job_id = job_id
                 go_to(2)
             except BackendError as exc:
@@ -532,11 +533,12 @@ def upload_page() -> None:
             disabled=not image_files,
         ):
             try:
-                api = MoveAIBackend()
-                uploaded = api.upload_images(st.session_state.job_id, image_files)
-                image_names = api.extract_image_names(uploaded)
-                api.capture(st.session_state.job_id, image_names)
-                inventory = api.get_inventory(st.session_state.job_id)
+                with st.spinner("Uploading photos and detecting furniture..."):
+                    api = MoveAIBackend()
+                    uploaded = api.upload_images(st.session_state.job_id, image_files)
+                    image_names = api.extract_image_names(uploaded)
+                    api.capture(st.session_state.job_id, image_names)
+                    inventory = api.get_inventory(st.session_state.job_id)
                 st.session_state.uploaded_names = image_names
                 st.session_state.backend_inventory = inventory
                 items = inventory.get("items", []) if isinstance(inventory, dict) else []
@@ -653,7 +655,8 @@ def furniture_page() -> None:
             disabled=not st.session_state.furniture,
         ):
             try:
-                quote_response = MoveAIBackend().get_quote(st.session_state.job_id)
+                with st.spinner("Calculating your quote..."):
+                    quote_response = MoveAIBackend().get_quote(st.session_state.job_id)
                 st.session_state.backend_quote = quote_response
                 quote = quote_response.get("quote", {}) if isinstance(quote_response, dict) else {}
                 total = float(quote.get("total_price", 0) or 0)
@@ -724,6 +727,18 @@ def review_page() -> None:
         "You will receive the confirmed quotation by email."
     )
 
+    try:
+        booking_status = MoveAIBackend().get_booking(st.session_state.job_id)
+        blockers = booking_status.get("blockers", []) if isinstance(booking_status, dict) else []
+    except BackendError:
+        blockers = []
+
+    if blockers:
+        st.warning(
+            "Before you can submit, please resolve:\n"
+            + "\n".join(f"- {reason}" for reason in blockers)
+        )
+
     back_col, submit_col = st.columns([1, 2])
     with back_col:
         if st.button("Back to furniture", use_container_width=True):
@@ -734,15 +749,22 @@ def review_page() -> None:
             "Submit to get quote",
             type="primary",
             use_container_width=True,
+            disabled=bool(blockers),
         ):
             try:
-                response = MoveAIBackend().submit_booking(st.session_state.job_id, move.get("notes"))
+                with st.spinner("Submitting your request..."):
+                    response = MoveAIBackend().submit_booking(st.session_state.job_id, move.get("notes"))
                 booking = response.get("booking", {}) if isinstance(response, dict) else {}
                 booking_id = booking.get("id") if isinstance(booking, dict) else None
                 st.session_state.request_id = f"BOOKING-{booking_id}" if booking_id is not None else f"JOB-{st.session_state.job_id}"
                 go_to(5)
             except BackendError as exc:
-                st.error(str(exc))
+                if isinstance(exc.detail, list) and exc.detail:
+                    st.error("Please resolve:\n" + "\n".join(f"- {reason}" for reason in exc.detail))
+                elif isinstance(exc.detail, str) and exc.detail:
+                    st.error(exc.detail)
+                else:
+                    st.error(str(exc))
 
     st.markdown("</div>", unsafe_allow_html=True)
 
