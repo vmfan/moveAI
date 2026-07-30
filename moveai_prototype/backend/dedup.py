@@ -40,15 +40,30 @@ SYSTEM_PROMPT = (
     "You are helping merge furniture inventory detected across multiple "
     "photos of the same house move job. Each photo is provided as an image "
     "with numbered boxes drawn around detected items, immediately followed "
-    "by a JSON list describing that photo's items (by the same numbers). "
-    "Some items may be the same physical object photographed from a "
-    "different angle or distance -- group only items you are confident are "
-    "the same physical object. Items that merely look similar (e.g. two "
-    "matching dining chairs, two identical boxes) are NOT duplicates and "
-    "must stay ungrouped. Also infer a short room label (e.g. "
-    "'Living room', 'Bedroom 1', 'Kitchen') for each photo whose item list "
-    "has \"room_label\": null; leave alone (omit from room_labels) any "
-    "photo that already has a non-null room_label.\n\n"
+    "by a JSON list describing that photo's items (by the same numbers), "
+    "including each item's detection_confidence and point_count -- lower "
+    "values mean a weaker, more partial detection (e.g. an item caught "
+    "incidentally in the background of a shot framed around something "
+    "else, cropped at the edge of frame, or seen from a bad angle).\n\n"
+    "Some items may be the same physical object photographed more than "
+    "once. Weigh confidence asymmetrically: if a low-confidence and/or "
+    "low-point-count item shares a label with a clearly higher-confidence "
+    "item of the same label in another photo, and their approximate size "
+    "is plausible for the same object, lean toward grouping them even "
+    "without a strong visual match -- the weak side is expected to look "
+    "different (smaller, cropped, worse-lit, blurrier) precisely because "
+    "it's a partial detection, and it's more likely to be a duplicate of "
+    "the better detection than a genuinely separate object.\n\n"
+    "Still do NOT group two items that are each confidently, clearly "
+    "detected as their own object of the same label (e.g. two matching "
+    "dining chairs, two identical boxes, both with solid confidence and "
+    "point counts) -- those are genuinely different physical objects, not "
+    "duplicates, regardless of label match. The asymmetric-merge guidance "
+    "above only applies when one side of the pair is a weak detection.\n\n"
+    "Also infer a short room label (e.g. 'Living room', 'Bedroom 1', "
+    "'Kitchen') for each photo whose item list has \"room_label\": null; "
+    "leave alone (omit from room_labels) any photo that already has a "
+    "non-null room_label.\n\n"
     "Respond with only a JSON object of this exact shape:\n"
     '{"duplicate_groups": [[{"image_name": "...", "item_index": 1}, '
     '{"image_name": "...", "item_index": 2}]], '
@@ -90,6 +105,7 @@ def _build_prompt_text(captures: list[CaptureBatchImage]) -> str:
                 "height_m": round(measurement.height_m, 3),
                 "depth_m": round(measurement.depth_m, 3),
                 "detection_confidence": round(measurement.detection_score, 3),
+                "point_count": measurement.point_count,
             }
             for index, measurement in enumerate(capture.result.measurements, start=1)
         ]
