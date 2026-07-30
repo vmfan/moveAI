@@ -77,10 +77,10 @@ def run_pipeline(
     timings["SAM 2"] = time.perf_counter() - start
     release_memory()
 
-    progress("Depth Pro: estimating metric depth and focal length", 0.58)
+    progress("Depth Anything V2: estimating indoor metric depth", 0.58)
     start = time.perf_counter()
     depth_m, focal_length_px = estimate_metric_depth(image, config, device)
-    timings["Depth Pro"] = time.perf_counter() - start
+    timings["Depth Anything V2"] = time.perf_counter() - start
     release_memory()
 
     progress("Open3D: fitting visible-surface bounding boxes", 0.88)

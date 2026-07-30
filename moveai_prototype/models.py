@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import gc
+import math
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Sequence
 
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from PIL import Image
 from transformers import (
+    AutoImageProcessor,
+    AutoModelForDepthEstimation,
     AutoModelForZeroShotObjectDetection,
     AutoProcessor,
     Sam2Model,
@@ -18,7 +22,7 @@ from transformers import (
 )
 
 from config import (
-    DEPTH_PRO_CHECKPOINT,
+    DEPTH_ANYTHING_V2_MODEL,
     GROUNDING_DINO_MODEL,
     SAM2_MODEL,
     PipelineConfig,
@@ -164,44 +168,56 @@ def segment_detections(
     return detections
 
 
+def estimate_focal_length_px(
+    image: Image.Image,
+    config: PipelineConfig,
+) -> float:
+    """Estimate focal length in pixels from EXIF or assumed horizontal FOV."""
+    try:
+        exif = image.getexif()
+        focal_35mm = exif.get(41989)  # FocalLengthIn35mmFilm
+        if focal_35mm:
+            return float(focal_35mm) / 36.0 * float(image.width)
+    except Exception:
+        pass
+
+    fov_rad = math.radians(config.assumed_horizontal_fov_deg)
+    return 0.5 * float(image.width) / math.tan(0.5 * fov_rad)
+
+
 def estimate_metric_depth(
     image: Image.Image,
     config: PipelineConfig,
     device: torch.device | None = None,
 ) -> tuple[np.ndarray, float]:
-    if not DEPTH_PRO_CHECKPOINT.exists():
-        raise FileNotFoundError(
-            f"Depth Pro checkpoint not found at {DEPTH_PRO_CHECKPOINT}"
-        )
-
-    import depth_pro
-    from depth_pro.depth_pro import DEFAULT_MONODEPTH_CONFIG_DICT
-
+    """Metric depth via Depth Anything V2 Indoor (meters) + FOV/EXIF focal length."""
     device = device or best_device()
-    precision = (
-        torch.float16
-        if config.use_half_precision and device.type in {"mps", "cuda"}
-        else torch.float32
-    )
-    depth_config = replace(
-        DEFAULT_MONODEPTH_CONFIG_DICT,
-        checkpoint_uri=str(DEPTH_PRO_CHECKPOINT),
-    )
-    model, transform = depth_pro.create_model_and_transforms(
-        config=depth_config,
-        device=device,
-        precision=precision,
-    )
+    image = image.convert("RGB")
+    processor = AutoImageProcessor.from_pretrained(DEPTH_ANYTHING_V2_MODEL)
+    model = AutoModelForDepthEstimation.from_pretrained(DEPTH_ANYTHING_V2_MODEL)
+    model.to(device)
     model.eval()
 
-    image_tensor = transform(np.array(image.convert("RGB"), copy=True))
+    inputs = processor(images=image, return_tensors="pt")
+    inputs = {key: value.to(device) for key, value in inputs.items()}
     with torch.inference_mode():
-        prediction = model.infer(image_tensor, f_px=None)
+        outputs = model(**inputs)
+        predicted_depth = outputs.predicted_depth
 
-    depth = prediction["depth"].detach().float().cpu().numpy()
-    focal_length_px = float(
-        prediction["focallength_px"].detach().float().cpu().item()
+    depth = (
+        F.interpolate(
+            predicted_depth.unsqueeze(1),
+            size=(image.height, image.width),
+            mode="bicubic",
+            align_corners=False,
+        )
+        .squeeze()
+        .detach()
+        .float()
+        .cpu()
+        .numpy()
     )
-    release_memory(prediction, image_tensor, model, transform)
+    depth = np.clip(depth, config.depth_min_m, config.depth_max_m)
+    focal_length_px = estimate_focal_length_px(image, config)
+    release_memory(outputs, inputs, model, processor, predicted_depth)
     return depth, focal_length_px
-

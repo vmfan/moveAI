@@ -32,7 +32,7 @@ Everything in [§2](#2-what-is-built-today) is implemented and running. Everythi
 room image + furniture class names
   → Grounding DINO   (text → boxes)
   → SAM 2.1 Tiny     (boxes → masks)
-  → Depth Pro        (image → metric depth + focal length)
+  → Depth Anything V2 (image → metric depth; FOV/EXIF focal length)
   → Open3D           (masked depth → point cloud → oriented bounding box)
   → per-object dimensions and visible volume
 ```
@@ -41,7 +41,7 @@ Four stages run sequentially in `moveai_prototype/pipeline.py`, driven either by
 
 ### Input preparation
 
-`prepare_image` (`pipeline.py:40`) applies EXIF transpose, converts to RGB, and downscales with LANCZOS so the longest side is at most 1280 px. The cap bounds Depth Pro's memory footprint, which dominates the run.
+`prepare_image` (`pipeline.py`) applies EXIF transpose, converts to RGB, and downscales with LANCZOS so the longest side is at most 1280 px. The cap bounds depth-model memory footprint, which dominates the run.
 
 ### Stage 1 — Grounding DINO: language to boxes
 
@@ -55,11 +55,11 @@ Post-processing applies `box_threshold=0.30` and `text_threshold=0.25`, then `_c
 
 A mask rather than a box is what makes the geometry stage viable: back-projecting a rectangular box would pull in wall and floor pixels behind the object and inflate its depth extent.
 
-### Stage 3 — Depth Pro: metric depth from one uncalibrated photo
+### Stage 3 — Depth Anything V2: metric depth from one uncalibrated photo
 
-`estimate_metric_depth` (`models.py:167`) loads Apple's Depth Pro from `checkpoints/depth_pro.pt` in fp16 on MPS/CUDA, fp32 otherwise.
+`estimate_metric_depth` (`models.py`) loads `depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf` via Hugging Face Transformers and returns a metric depth map in meters.
 
-It is called with **`f_px=None`**, so the model predicts focal length itself alongside the depth map. This is the linchpin of the whole approach: it is what allows a metric measurement from an arbitrary phone photo with no calibration step, no reference object in frame, and no EXIF intrinsics. Every downstream number depends on that predicted focal being right.
+Focal length is **not** predicted by this model. It is taken from EXIF `FocalLengthIn35mmFilm` when present; otherwise an assumed horizontal FOV (default 60°) converts image width into `focal_length_px` for the pinhole back-projection in Open3D. This replaces the previous Apple Depth Pro stage, which predicted both depth and focal length from `checkpoints/depth_pro.pt`.
 
 ### Stage 4 — Open3D: depth to bounding box
 
@@ -89,7 +89,7 @@ This is an intentional concession to the 8 GB unified-memory machine the prototy
 
 **Per-object error isolation.** `measure_all` (`geometry.py:204`) catches per-object failures and collects them into `measurement_errors` rather than aborting. One un-measurable object degrades the inventory; it does not destroy the run.
 
-**No network at inference.** All Hugging Face loads pass `local_files_only=True`; the Depth Pro checkpoint is a local file whose absence raises a clear `FileNotFoundError`.
+**Network at first load.** Grounding DINO and SAM 2 still prefer `local_files_only=True` once cached. Depth Anything V2 loads from Hugging Face on first use (then hits the local HF cache).
 
 ---
 
