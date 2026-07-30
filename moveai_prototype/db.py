@@ -505,6 +505,10 @@ def set_customer_confirmed(conn: sqlite3.Connection, item_id: int, confirmed: bo
 
 
 def delete_inventory_item(conn: sqlite3.Connection, item_id: int) -> None:
+    # quote_line rows have no ON DELETE CASCADE onto inventory_item (quotes are
+    # otherwise an immutable historical record), so a persisted quote_line
+    # referencing this item would violate the FK and raise IntegrityError.
+    conn.execute("DELETE FROM quote_line WHERE inventory_item_id = ?", (item_id,))
     conn.execute("DELETE FROM inventory_item WHERE id = ?", (item_id,))
     conn.commit()
 

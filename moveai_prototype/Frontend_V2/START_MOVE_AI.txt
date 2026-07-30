@@ -1,0 +1,120 @@
+MOVE AI – START BACKEND AND FRONTENDS
+======================================
+
+Open three separate Terminal windows or tabs.
+
+Assumed project structure:
+
+moveai_prototype/
+├── backend/
+├── move_ai.py
+├── administrator.py
+└── .venv/
+
+
+1. START THE BACKEND
+--------------------
+
+Open Terminal 1:
+
+cd "/Users/tilmannbruns/Documents/Entwicklung/moveAI-main 2/moveai_prototype"
+
+Activate the virtual environment:
+
+source .venv/bin/activate
+
+Start the FastAPI backend:
+
+python -m uvicorn backend.main:app --reload --port 8010
+
+Backend URL:
+
+http://localhost:8010
+
+API documentation:
+
+http://localhost:8010/docs
+
+
+2. START THE CUSTOMER FRONTEND
+------------------------------
+
+Open Terminal 2:
+
+cd "/Users/tilmannbruns/Documents/Entwicklung/moveAI-main 2/moveai_prototype"
+
+Activate the virtual environment:
+
+source .venv/bin/activate
+
+Set the backend URL:
+
+export MOVEAI_API_BASE=http://localhost:8010
+
+Start the customer Streamlit app:
+
+python -m streamlit run move_ai.py --server.port 8501
+
+Customer app:
+
+http://localhost:8501
+
+
+3. START THE ADMINISTRATOR FRONTEND
+-----------------------------------
+
+Open Terminal 3:
+
+cd "/Users/tilmannbruns/Documents/Entwicklung/moveAI-main 2/moveai_prototype"
+
+Activate the virtual environment:
+
+source .venv/bin/activate
+
+Set the backend URL:
+
+export MOVEAI_API_BASE=http://localhost:8010
+
+Start the administrator Streamlit app:
+
+python -m streamlit run administrator.py --server.port 8502
+
+Administrator app:
+
+http://localhost:8502
+
+
+4. STOP THE APPLICATIONS
+------------------------
+
+In each Terminal window, press:
+
+Control + C
+
+
+5. IF A COMMAND IS NOT FOUND
+----------------------------
+
+Activate the virtual environment first:
+
+source .venv/bin/activate
+
+Then install missing dependencies if necessary:
+
+python -m pip install -r requirements.txt
+
+For the frontend, Streamlit and Requests must be installed:
+
+python -m pip install streamlit requests pandas
+
+
+6. IMPORTANT
+------------
+
+The backend must be running before uploading images or using either frontend.
+
+The ports must remain consistent:
+
+Backend:       8010
+Customer app:  8501
+Administrator: 8502
