@@ -669,25 +669,35 @@ def furniture_page() -> None:
                         st.rerun()
                     except BackendError as exc:
                         st.error(str(exc))
-                correct_toggle = cols[2].toggle("Correct", key=f"toggle_correct_{item['item_id']}")
+                show_correct_key = f"show_correct_{item['item_id']}"
+                st.session_state.setdefault(show_correct_key, False)
+                if cols[2].button("Correct", key=f"correct_btn_{item['item_id']}", use_container_width=True):
+                    st.session_state[show_correct_key] = not st.session_state[show_correct_key]
                 if cols[3].button("Remove", key=f"remove_{item['item_id']}", use_container_width=True):
                     try:
                         MoveAIBackend().delete_inventory_item(job_id, item["item_id"])
                         st.rerun()
                     except BackendError as exc:
                         st.error(str(exc))
-                if correct_toggle:
+                if st.session_state[show_correct_key]:
                     with st.form(f"correct_form_{item['item_id']}"):
                         cw, ch, cd = st.columns(3)
                         new_w = cw.number_input("Width (m)", min_value=0.01, value=float(item["width_m"] or 0.01), step=0.05)
                         new_h = ch.number_input("Height (m)", min_value=0.01, value=float(item["height_m"] or 0.01), step=0.05)
                         new_d = cd.number_input("Depth (m)", min_value=0.01, value=float(item["depth_m"] or 0.01), step=0.05)
-                        if st.form_submit_button("Save correction"):
+                        save_col, cancel_col = st.columns(2)
+                        save = save_col.form_submit_button("Save correction", type="primary", use_container_width=True)
+                        cancel = cancel_col.form_submit_button("Cancel", use_container_width=True)
+                        if save:
                             try:
                                 MoveAIBackend().correct_item(job_id, item["item_id"], new_w, new_h, new_d)
+                                st.session_state[show_correct_key] = False
                                 st.rerun()
                             except BackendError as exc:
                                 st.error(str(exc))
+                        elif cancel:
+                            st.session_state[show_correct_key] = False
+                            st.rerun()
         st.divider()
 
     if staff_escalate:
