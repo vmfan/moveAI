@@ -348,10 +348,19 @@ def go_to(step: int) -> None:
 
 
 def sync_furniture_state(job_id: int) -> None:
-    inventory = MoveAIBackend().get_inventory(job_id)
+    api = MoveAIBackend()
+    inventory = api.get_inventory(job_id)
     items = inventory.get("items", []) if isinstance(inventory, dict) else []
     furniture = []
     for item in items:
+        if item.get("is_boxed_goods"):
+            # Temporarily omitted for the demo: the auto-estimated box count is
+            # still unstable and confuses the customer-facing review step.
+            try:
+                api.delete_inventory_item(job_id, item["id"])
+            except BackendError:
+                pass
+            continue
         w, h, d = (float(item.get(k, 0) or 0) for k in ("width_m", "height_m", "depth_m"))
         furniture.append({
             "item_id": item.get("id"),
