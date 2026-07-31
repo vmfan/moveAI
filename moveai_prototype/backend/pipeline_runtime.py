@@ -32,14 +32,13 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 from transformers import (  # noqa: E402
-    AutoImageProcessor,
-    AutoModelForDepthEstimation,
     AutoModelForZeroShotObjectDetection,
     AutoProcessor,
     Sam2Model,
     Sam2Processor,
 )
 
+import depth_pro  # noqa: E402
 import pipeline  # noqa: E402
 from config import PipelineConfig  # noqa: E402
 from pipeline import PipelineResult  # noqa: E402
@@ -78,6 +77,20 @@ def _install_cache(
     setattr(obj, attr_name, cached)
 
 
+def _depth_pro_key(args: tuple, kwargs: dict) -> tuple:
+    """`create_model_and_transforms(config=DepthProConfig(...), device=...,
+    precision=...)` -- `DepthProConfig` is an unhashable dataclass (it holds
+    a nested `DepthProEncoderConfig`), so key on its `checkpoint_uri` field
+    (the only part that varies here) plus device/precision instead of the
+    raw config object."""
+    config = kwargs.get("config") if "config" in kwargs else (args[0] if args else None)
+    return (
+        getattr(config, "checkpoint_uri", None),
+        str(kwargs.get("device")),
+        str(kwargs.get("precision")),
+    )
+
+
 _PATCHED = False
 _patch_lock = threading.Lock()
 
@@ -91,8 +104,7 @@ def _install_model_caching() -> None:
         _install_cache(AutoModelForZeroShotObjectDetection, "from_pretrained")
         _install_cache(Sam2Processor, "from_pretrained")
         _install_cache(Sam2Model, "from_pretrained")
-        _install_cache(AutoImageProcessor, "from_pretrained")
-        _install_cache(AutoModelForDepthEstimation, "from_pretrained")
+        _install_cache(depth_pro, "create_model_and_transforms", key_fn=_depth_pro_key)
         _PATCHED = True
 
 

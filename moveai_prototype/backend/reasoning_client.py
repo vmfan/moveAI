@@ -4,7 +4,7 @@ multiple photos of the same job and to infer per-photo room labels
 (IMPLEMENTATION_ROADMAP.md multi-image build).
 
 This is the first external network API call anywhere in this codebase --
-everything else (Grounding DINO/SAM2/Depth Anything V2) runs local model weights.
+everything else (Grounding DINO/SAM2/Depth Pro) runs local model weights.
 Uses `httpx` (already a dependency, via `requirements.txt`) rather than
 adding an `openai` SDK dependency for one endpoint.
 """

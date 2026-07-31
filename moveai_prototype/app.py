@@ -125,7 +125,7 @@ with left:
 with right:
     st.subheader("Pipeline")
     st.markdown(
-        "Grounding DINO → SAM 2 → Depth Anything V2 → Open3D OBB"
+        "Grounding DINO → SAM 2 → Depth Pro → Open3D OBB"
     )
     st.info(
         "Measurement status: experimental. A single photograph cannot reveal "
@@ -209,7 +209,7 @@ with depth_tab:
     with col_b:
         st.image(
             render_depth_map(result.depth_m),
-            caption="Depth Anything V2 metric depth (near = warm, far = cool)",
+            caption="Depth Pro metric depth (near = warm, far = cool)",
             width="stretch",
         )
     finite_depth = result.depth_m[

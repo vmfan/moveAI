@@ -17,8 +17,6 @@ The Hugging Face model cache is not populated in this dev environment, and `move
 
 **Update (ahead of Build 8):** Grounding DINO (`IDEA-Research/grounding-dino-tiny`), SAM2 (`facebook/sam2.1-hiera-tiny`), and the Depth Pro checkpoint (`checkpoints/depth_pro.pt`, 1.9GB) are now all confirmed present/cached on this dev machine, and a live `run_pipeline()` call was verified to work end-to-end with `local_files_only=True`. Builds 10 and 14 (anything touching the live AI pipeline) can rely on this — but this is dev-machine-only state; a fresh machine or container would need to re-download the HF models and manually place the Depth Pro checkpoint before the pipeline would work there.
 
-**Update (Depth Anything V2):** Depth Pro has been replaced by Depth Anything V2 Metric Indoor Large (`depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf`). `models.py` / `config.py` / `backend/pipeline_runtime.py` / docs no longer require `checkpoints/depth_pro.pt`. The runtime cache now wraps `AutoImageProcessor` + `AutoModelForDepthEstimation` instead of `depth_pro.create_model_and_transforms`. Focal length uses EXIF when available, otherwise an assumed 60° HFOV.
-
 | # | Build | Depends on | Status |
 |---|---|---|---|
 | 1 | Axis-semantics fix (`geometry.py`) | — | Complete |

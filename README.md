@@ -34,7 +34,7 @@ moveai_prototype/
 - **Node/npm** for `moveai_prototype/frontend/`.
 - **Model weights:**
   - Grounding DINO (`IDEA-Research/grounding-dino-tiny`) and SAM 2 (`facebook/sam2.1-hiera-tiny`) are pulled through the Hugging Face cache automatically.
-  - Depth Anything V2 Metric Indoor Large (`depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf`) is also pulled through Hugging Face (no manual Depth Pro `.pt` download).
+  - Apple's Depth Pro checkpoint is **not** fetched automatically — download it manually from `https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt` (~1.9 GB) and place it at `moveai_prototype/checkpoints/depth_pro.pt`.
 - **`.env` secrets** (`moveai_prototype/.env`): `HKUST_VLM_API_KEY` and `HKUST_VLM_BASE_URL`, used by the cross-image dedup/room-labeling pass (`backend/reasoning_client.py`). The capture pipeline still works without these — a missing/unreachable dedup call is surfaced as a non-fatal `dedup_error` in the capture response, not a hard failure.
 
 ## Quick start — same machine
@@ -120,7 +120,7 @@ No model weights needed except where noted, from `moveai_prototype/`:
 .venv/bin/python quote_smoke_test.py
 .venv/bin/python booking_smoke_test.py
 .venv/bin/python dedup_smoke_test.py
-.venv/bin/python pipeline_runtime_smoke_test.py   # needs Grounding DINO/SAM2/Depth Anything V2 cached
+.venv/bin/python pipeline_runtime_smoke_test.py   # needs Grounding DINO/SAM2/Depth Pro cached
 ```
 
 ## The legacy Streamlit app
